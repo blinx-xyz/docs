@@ -8,7 +8,7 @@ site:
       path: api-reference
       default: true
       content:
-        directory: "./gitbook-docs "
+        directory: ./gitbook-docs
     - type: space
       key: space-2
       title: Dashboard
