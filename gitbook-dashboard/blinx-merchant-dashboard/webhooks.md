@@ -1,6 +1,8 @@
 # Webhooks
 
-**Route:** `/webhooks`
+**Route:** `/tenant/webhooks`
+
+<figure><img src="../.gitbook/assets/tenant/webhooks.png" alt=""><figcaption></figcaption></figure>
 
 The Webhooks page lets you subscribe your own HTTPS endpoints to Blinx events, so your systems are notified as things happen instead of polling. Subscriptions are scoped to your tenant.
 
@@ -8,10 +10,10 @@ The Webhooks page lets you subscribe your own HTTPS endpoints to Blinx events, s
 
 Each subscription has a delivery **URL** and one or more **topics**:
 
-| Topic            | Fires when…                                       |
-| ---------------- | ------------------------------------------------- |
-| `PAYMENT_UPDATE`  | a payment changes state (created → settled / failed / …) |
-| `TRANSFER_UPDATE` | a transfer changes state                          |
+| Topic | Fires when… |
+|---|---|
+| `PAYMENT_UPDATE` | a payment changes state (created → settled / failed / …) |
+| `TRANSFER_UPDATE` | a transfer changes state |
 
 ### Managing subscriptions
 

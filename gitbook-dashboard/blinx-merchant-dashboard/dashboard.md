@@ -2,7 +2,7 @@
 
 **Route:** `/tenant/dashboard`
 
-<figure><img src="../.gitbook/assets/home.png" alt=""><figcaption></figcaption></figure>
+<figure><img src="../.gitbook/assets/tenant/dashboard.png" alt=""><figcaption></figcaption></figure>
 
 The Tenant Dashboard is your landing page. It summarises your tenant, lets you manage your API credentials, and lists the users attached to your tenant.
 
@@ -10,16 +10,16 @@ The Tenant Dashboard is your landing page. It summarises your tenant, lets you m
 
 A card at the top shows your tenant's key details:
 
-| Field                 | Meaning                                                                                      |
-| --------------------- | -------------------------------------------------------------------------------------------- |
-| **Name / ID**         | Your tenant's display name and unique identifier                                             |
-| **Logo**              | Your brand logo, shown to payers on the payment page (set by link or image upload — see below) |
-| **KYB**               | Know-Your-Business verification status — `Verified`, `Pending`, `Rejected`, or `Not started` |
-| **Active**            | Whether the tenant is currently enabled                                                      |
-| **Type**              | Tenant type (e.g. merchant)                                                                  |
-| **Vault**             | A vault icon — **green** if a vault is provisioned for your tenant, **red** if not           |
-| **Environments**      | The environments your tenant is configured for                                               |
-| **Created / Updated** | Timestamps                                                                                   |
+| Field | Meaning |
+|---|---|
+| **Name / ID** | Your tenant's display name and unique identifier |
+| **Logo** | Your brand logo, shown to payers on the payment page (set by link or image upload) |
+| **KYB** | Know-Your-Business verification status — `Verified`, `Pending`, `Rejected`, or `Not started` |
+| **Active** | Whether the tenant is currently enabled |
+| **Type** | Tenant type (e.g. merchant) |
+| **Vault** | A vault icon — **green** if a vault is provisioned for your tenant, **red** if not |
+| **Environments** | The environments your tenant is configured for |
+| **Created / Updated** | Timestamps |
 
 Use the **Refresh** button (top-right) to reload the latest data.
 
@@ -47,10 +47,10 @@ Your tenant authenticates to the Blinx API with an **API key** and **API secret*
 
 A table lists the users belonging to your tenant:
 
-| Column       | Description                                 |
-| ------------ | ------------------------------------------- |
-| **Email**    | The user's email address                    |
-| **Address**  | Their wallet address (shortened)            |
-| **Roles**    | Roles assigned to the user                  |
+| Column | Description |
+|---|---|
+| **Email** | The user's email address |
+| **Address** | Their wallet address (shortened) |
+| **Roles** | Roles assigned to the user |
 | **Verified** | Whether the user has completed verification |
-| **Created**  | When the user was added                     |
+| **Created** | When the user was added |

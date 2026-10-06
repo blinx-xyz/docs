@@ -1,19 +1,20 @@
-# Payers
+# Contacts
 
-**Route:** `/payers`
+**Route:** `/tenant/payers`
 
-The Payers page lists the payers your tenant works with — the recipients recorded against your account — so you can review and search them. It is read-only.
+<figure><img src="../.gitbook/assets/tenant/payers.png" alt=""><figcaption></figcaption></figure>
 
-### The payers list
+The Contacts (Payers) page lists the payers/recipients your tenant works with so you can review and search them.
 
-Each entry shows the payer's recorded details — name/label, institution or network, country, and **type** (`personal` or `external`). The list is **paginated**: a page at a time (5 by default, up to 50 per page), with a control to load the next page.
+### The contacts list
+
+Each entry shows the payer's recorded details including account name, account identifier, payment type (bank/momo), payment provider/institution, country, and more. The list is paginated.
 
 ### Filtering
 
 You can narrow the list by:
+- **Payment Type** — bank or mobile money (momo)
+- **Country** — the payer's country  
+- **Payment Provider** — the institution/network
 
-* **Type** — `personal` or `external`.
-* **Country** — the payer's country.
-* **Scope** — narrows to a particular grouping of payers.
-
-Backed by `GET /api/dashboard/tenant/payers` (scoped to your tenant; `type`, `country`, `scope`, `limit`, and `offset` query parameters). The response carries the page of payers plus a `total` count and the `next` offset (or `null` when you have reached the end).
+You can also search and sort the list as needed.
