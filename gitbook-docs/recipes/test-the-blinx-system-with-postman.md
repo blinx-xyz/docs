@@ -8,9 +8,7 @@ For deeper detail on individual topics, see the companion docs: create & check a
 
 ***
 
-### 0. One-time Postman setup
-
-{% file src="../.gitbook/assets/Blinx Merchant API.postman_collection.json" %}
+#### 0. One-time Postman setup
 
 1. **Install Postman** — download it from postman.com and open the desktop app (a free account is enough; you can skip sign-in for local testing).
 2. **Download Postman collection** above
@@ -18,7 +16,7 @@ For deeper detail on individual topics, see the companion docs: create & check a
 4. **Set the base URL** — the collection includes a **`sandbox_url`** variable for the API base. On the collection's **Variables** tab, set `sandbox_url` to the environment you're testing against — the Blinx **sandbox** URL you were given, or `http://localhost:3001` for a service running locally — and **Save**. Make sure that service is reachable before you send anything.
 5. **Test the connection** — run the top-level **healthcheck (test sandbox)** request (`GET {{sandbox_url}}/healthcheck`). A **200** confirms `sandbox_url` is correct and the service is up. This request needs no API key — it's the quickest way to verify your setup before onboarding.
 
-#### How authentication works (you don't sign anything by hand)
+**How authentication works (you don't sign anything by hand)**
 
 Merchant endpoints are protected by a signed-request scheme (`authenticateSeller`). The collection already contains a **collection-level Pre-request Script** that, before every request, computes an HMAC-SHA256 signature and injects the `x-api-key`, `x-timestamp`, and `x-signature` headers for you. You only have to supply your key and secret (next step). If you're curious how it works, read postman-pre-request.md.
 
@@ -26,7 +24,7 @@ Merchant endpoints are protected by a signed-request scheme (`authenticateSeller
 
 ***
 
-### 1. Onboarding — set your API key & secret
+#### 1. Onboarding — set your API key & secret
 
 Blinx issues each merchant an **API key** and an **API secret**.
 
@@ -42,27 +40,27 @@ Blinx issues each merchant an **API key** and an **API secret**.
 
 ***
 
-### 2. Payment — create a request and take the payer through it
+#### 2. Payment — create a request and take the payer through it
 
 Open the **payments** folder. A payment is a request for a **payer** (your buyer) to pay you; you hand them a hosted URL and then poll for the outcome.
 
-#### 2a. Create the payment
+**2a. Create the payment**
 
 1. **create payment** — `POST /api/merchant/payments` Body sends `amount`, `fiat`, `token`, `country`, `type`, `reference`, `purpose`, `validUntil`. **Check:** `201` and the response contains a **`redirectUrl`** (the hosted payment page). Copy the returned payment `id` into the `payment_id` variable so _get payment_ / _peek payment_ can use it.
 2. Copy the **`redirectUrl`** and open it in a browser — this is the payer's view.
 
-#### 2b. Payer denies the request
+**2b. Payer denies the request**
 
 1. On the payment page, the payer **rejects** the request.
 2. Back in Postman, run **get payments** (`GET /api/merchant/payments`). **Check:** the payment's **status is `rejected`**.
 
-#### 2c. Payer happy path (settled)
+**2c. Payer happy path (settled)**
 
 1. On the payment page, the payer **accepts**.
 2. They fill in payout details: choose **bank or mobile** and use **`1111111111`** as the account identifier (this is the sandbox “success” number), then **Continue**.
 3. In Postman, run **get payments** repeatedly. **Check:** the status advances and ends at **`settled`**.
 
-#### 2d. Payer unhappy path (failed)
+**2d. Payer unhappy path (failed)**
 
 1. On the payment page, the payer **accepts**.
 2. They fill in payout details: choose **bank or mobile** and use **`0000000000`** as the account identifier (the sandbox “failure” number), then **Continue**.
@@ -72,7 +70,7 @@ Open the **payments** folder. A payment is a request for a **payer** (your buyer
 
 ***
 
-### 3. Payments reports
+#### 3. Payments reports
 
 From the **payments** folder:
 
@@ -81,7 +79,7 @@ From the **payments** folder:
 
 ***
 
-### Troubleshooting
+#### Troubleshooting
 
 * **401 Unauthorized** — check `api_key`/`api_secret` are set on the collection **Variables** tab (current value) and saved; check your machine clock is within ±5 minutes of the server; confirm `sandbox_url` points at a reachable service (e.g. `http://localhost:3001` for a local run).
 * **A `{{...}}` variable is empty** — for `payment_id`, copy the `id` from the creating request's response into the variable before using it.

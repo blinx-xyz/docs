@@ -1,23 +1,23 @@
 # Create a Payment
 
-## Create and check a payment
+### Create and check a payment
 
 A practical guide to creating a **payment**, handing it off to the payer, and learning its outcome. For the exact request/response contract see the OpenAPI spec (`seller-payments.openapi.yaml`, tag _Merchant Payments_); for signing see the main README and Sign a payment request.
 
-### Concepts
+#### Concepts
 
 * **Payment** — a request for a payer to pay you. You create it in the local **`fiat`** currency the payer pays; you (the merchant) are settled in the **`token`** you choose. `amount` is the decimal amount in that `fiat` currency.
 * **`redirectUrl`** — the hosted URL returned on create. The payer completes the payment there; your integration's only job is to get the payer to it. Its last path segment is the payment **`code`** (see below), not the payment `id`.
 * **`code`** — a short, human-readable payer code (format `word-word-####C`, e.g. `foam-bark-95162`) returned alongside `id` on create. It is what appears in `redirectUrl`; the internal payment `id` never leaks into the payer link.
 * **Corridor** — the `(country, fiat)` pair. It decides which amount limits apply and whether the payment can be created at all. Currencies shared across countries (XOF, XAF) are bounded **per country**, so pass `country` to disambiguate; it falls back to `fiat` when omitted.
-* **`items`** — optional line items (what the payer is buying), shown to the payer on the hosted page. See [Line items](#line-items).
-* **Quote** — the price of converting the payer's `fiat` into your `token`, and the choice of payout **provider** that will execute it. See [How quotes work](#how-quotes-work).
+* **`items`** — optional line items (what the payer is buying), shown to the payer on the hosted page. See Line items.
+* **Quote** — the price of converting the payer's `fiat` into your `token`, and the choice of payout **provider** that will execute it. See How quotes work.
 * **`status`** — where the payment is in its lifecycle. One of `created`, `viewed`, `waiting`, `processing`, `validated`, `refunding`, `refunded`, `expired`, `rejected`, `failed`, `cancelled`, `settled`. **Terminal**: `settled` (success) and `failed` / `rejected` / `expired` / `cancelled` (not paid). The rest are in-flight; `viewed` means the payer opened the link but has not confirmed yet.
 * **`reference`** — your own unique reference for the payment. It travels back on reads so you can reconcile against your records.
 * **`purpose`** — a human-readable description shown to the payer; it maps to the transfer memo and comes back on the `Payment`.
 * **`type`** — the payment category, one of `gift`, `bills`, `groceries`, `travel`, `health`, `entertainment`, `housing`, `school-fees`, `other`. Defaults to `other` when omitted.
 
-### Lifecycle
+#### Lifecycle
 
 ```
 POST /api/merchant/quote             → { data: QuoteResponse }   (optional: check price & limits)
@@ -37,20 +37,20 @@ status ∈ { settled | failed | rejected | expired | cancelled }   (terminal)
 
 Create the payment, give the payer its `redirectUrl`, then wait for a terminal `status` by polling `GET /api/merchant/payments/{id}/status` (or the full `GET /api/merchant/payments/{id}`).
 
-### Endpoints
+#### Endpoints
 
 All endpoints are under `/api/merchant` and require the standard apiKey + apiSecret HMAC signature, except where noted.
 
-| Method & path                                | Purpose                                                                      |
-| -------------------------------------------- | ---------------------------------------------------------------------------- |
-| `POST /api/merchant/quote`                   | Best quote across providers for a currency pair and amount                   |
-| `POST /api/merchant/payments`                | Create a payment; returns the hosted `redirectUrl`                           |
-| `GET /api/merchant/payments/{id}`            | Get one payment, in any status                                               |
-| `GET /api/merchant/payments/{id}/status`     | Get only the payment's `status` (lightweight polling)                        |
-| `GET /api/merchant/payments`                 | List the merchant's payments — JSON array, or CSV with `?format=csv`         |
-| `GET /api/merchant/payments/limits/{country}`| Amount limits for a country — **not signed**, no auth headers needed         |
+| Method & path                                 | Purpose                                                              |
+| --------------------------------------------- | -------------------------------------------------------------------- |
+| `POST /api/merchant/quote`                    | Best quote across providers for a currency pair and amount           |
+| `POST /api/merchant/payments`                 | Create a payment; returns the hosted `redirectUrl`                   |
+| `GET /api/merchant/payments/{id}`             | Get one payment, in any status                                       |
+| `GET /api/merchant/payments/{id}/status`      | Get only the payment's `status` (lightweight polling)                |
+| `GET /api/merchant/payments`                  | List the merchant's payments — JSON array, or CSV with `?format=csv` |
+| `GET /api/merchant/payments/limits/{country}` | Amount limits for a country — **not signed**, no auth headers needed |
 
-### How quotes work
+#### How quotes work
 
 Every payment converts the payer's **fiat** into your **token** through a payout **provider**. Several providers can serve the same corridor at different prices, so Blinx asks all of them and keeps the best one.
 
@@ -105,7 +105,7 @@ PUT  (payer confirms) ───────► provider stored? use it
 * **Use the quote to check an amount before creating.** An out-of-range amount fails with `PAY_AMOUNT_OUT_OF_RANGE` (the message carries the bounds), and an amount too small to pay out anything after fees fails with `PAY_LOW_AMOUNT`.
 * **`rate`** is fiat per token unit; **`localFee`** is the provider fee in the fiat; **`amountOut`** is what you would receive in `currencyOut` after fees.
 
-### Walkthrough
+#### Walkthrough
 
 The examples below assume you sign each request. The easiest way is the CLI signer, which can also print a runnable `curl`:
 
@@ -121,7 +121,7 @@ ts-node scripts/sign-payment-request.ts \
 >
 > **Sign the exact path and bytes.** The signature covers the request target (path + query) **exactly as sent** and the **verbatim** body bytes — don't add a trailing slash, reorder query params, or re-serialize the JSON after signing.
 
-#### 1. (Optional) Quote the payment
+**1. (Optional) Quote the payment**
 
 Check the price and that the amount is payable for the corridor:
 
@@ -144,7 +144,7 @@ For a payment, `currencyIn` is the `fiat` the payer pays and `currencyOut` is yo
 
 Optional body fields: `channel` (`bank` | `momo`) and `providers` (e.g. `["2"]`) to restrict which providers compete.
 
-#### 2. Create the payment
+**2. Create the payment**
 
 ```bash
 curl -X POST http://localhost:3001/api/merchant/payments \
@@ -155,29 +155,29 @@ curl -X POST http://localhost:3001/api/merchant/payments \
 
 The body is a `PaymentRequest`:
 
-| Field        | Required | Description                                                                                                   |
-| ------------ | -------- | ------------------------------------------------------------------------------------------------------------- |
-| `amount`     | yes      | Decimal string, in the `fiat` currency. Must fall within the corridor's `payments.min`/`payments.max`.        |
-| `fiat`       | yes      | Local currency the payer pays (e.g. `NGN`). Must be `country`'s currency.                                     |
-| `token`      | yes      | Settlement token you receive: `USDC` or `USDT`.                                                               |
-| `country`    | yes      | ISO 3166-1 alpha-2 code (e.g. `NG`).                                                                          |
-| `reference`  | yes      | Your unique reference.                                                                                        |
-| `purpose`    | yes      | Description shown to the payer.                                                                               |
-| `type`       | no       | Payment category (see Concepts). Defaults to `other`.                                                         |
-| `validUntil` | no       | Future ISO 8601 expiry. Defaults to 24 hours after creation.                                                  |
+| Field        | Required | Description                                                                                                               |
+| ------------ | -------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `amount`     | yes      | Decimal string, in the `fiat` currency. Must fall within the corridor's `payments.min`/`payments.max`.                    |
+| `fiat`       | yes      | Local currency the payer pays (e.g. `NGN`). Must be `country`'s currency.                                                 |
+| `token`      | yes      | Settlement token you receive: `USDC` or `USDT`.                                                                           |
+| `country`    | yes      | ISO 3166-1 alpha-2 code (e.g. `NG`).                                                                                      |
+| `reference`  | yes      | Your unique reference.                                                                                                    |
+| `purpose`    | yes      | Description shown to the payer.                                                                                           |
+| `type`       | no       | Payment category (see Concepts). Defaults to `other`.                                                                     |
+| `validUntil` | no       | Future ISO 8601 expiry. Defaults to 24 hours after creation.                                                              |
 | `network`    | no       | Settlement network; your vault must hold an active `{token}_{network}` address. Defaults to your vault's default address. |
-| `items`      | no       | Line items shown to the payer — see below.                                                                    |
+| `items`      | no       | Line items shown to the payer — see below.                                                                                |
 
-##### Line items
+**Line items**
 
 `items` is an optional list describing what the payer is paying for. Each item is shown on the hosted payment page under the payment's `purpose`.
 
-| Item field    | Required | Type / limit                    | Meaning                                                    |
-| ------------- | -------- | ------------------------------- | ---------------------------------------------------------- |
-| `name`        | yes      | string, non-empty, ≤ 255 chars  | Item label, e.g. `Annual subscription`                     |
-| `description` | no       | string, no length limit         | Longer text, e.g. `Global content plan, 12 months`         |
-| `price`       | no       | numeric string, ≤ 255 chars     | Unit price, in the payment's `fiat` (e.g. `"4000"`)        |
-| `units`       | no       | string, ≤ 255 chars             | Quantity, free text (e.g. `"1"`, `"2 kg"`)                 |
+| Item field    | Required | Type / limit                   | Meaning                                             |
+| ------------- | -------- | ------------------------------ | --------------------------------------------------- |
+| `name`        | yes      | string, non-empty, ≤ 255 chars | Item label, e.g. `Annual subscription`              |
+| `description` | no       | string, no length limit        | Longer text, e.g. `Global content plan, 12 months`  |
+| `price`       | no       | numeric string, ≤ 255 chars    | Unit price, in the payment's `fiat` (e.g. `"4000"`) |
+| `units`       | no       | string, ≤ 255 chars            | Quantity, free text (e.g. `"1"`, `"2 kg"`)          |
 
 * **Items are informational.** They are not summed or checked against `amount` — the payer is always charged `amount`. Keep them consistent with it yourself.
 * **1 to 200 items.** If you send `items`, it must be a non-empty array of at most 200 entries. Omit the field entirely for a payment without items.
@@ -200,7 +200,7 @@ The body is a `PaymentRequest`:
 * An unsupported `country`/`fiat` → `400 PAY_COUNTRY_NOT_SUPPORTED` (here `errors` is a single `{ field, value }` object, not an array).
 * Reusing a `reference` that still belongs to a live or settled payment → `409 DB_409_DUPLICATE_ENTRY`. A reference frees up only once its payment reaches a failed terminal state (`expired`/`rejected`/`failed`/`cancelled`).
 
-#### 3. Check one payment
+**3. Check one payment**
 
 Create hands you the payment `id`, but the outcome arrives later. For polling, read just the status:
 
@@ -254,7 +254,7 @@ curl http://localhost:3001/api/merchant/payments/7b2c1e90-… \
 * A payment not owned by the caller's tenant → `404 PAY_404_NOT_FOUND`. The same 404 covers unknown ids: existence is never disclosed.
 * **Null/unknown fields are omitted, not sent as `null`.** Fields like `amountUsd`, `failure` or `cancelledAt` are simply absent until they have a value — read a missing key as "not set".
 
-#### 4. List payments (bulk)
+**4. List payments (bulk)**
 
 For reconciliation over many payments, list them instead of fetching one by one:
 
@@ -270,27 +270,27 @@ curl 'http://localhost:3001/api/merchant/payments?format=csv' \
 
 Rows have the same flat shape as the single-payment read. The list also includes your vault top-ups — filter on `type` (`payment` | `topup`). Payments still `created`/`viewed` past their `validUntil` are moved to `expired` as the list is read. `?format=csv` returns the same rows as an RFC 4180 CSV file (`text/csv`, `Content-Disposition: attachment`). See the OpenAPI `PaymentSummary` schema for the exact columns.
 
-### Errors
+#### Errors
 
-| Status / code                                                 | When                                                                              |
-| ------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `400 PAY_INVALID_QUOTE_REQUEST`                              | Create: request failed validation; `errors` is an array of `{ field, value, message }` (bad/out-of-range `amount`, mismatched `fiat`/`country`, unsupported `token`, invalid `network`/`type`/`validUntil`, missing/unsafe `reference`/`purpose`, malformed `items`, or an `amount` too low to produce a payout). Quote: non-positive `amount` or unsupported token |
-| `400 PAY_400_INVALID_REQUEST`                                | Quote only: fiat → fiat pair, or a fiat that does not match `country`             |
-| `400 PAY_AMOUNT_OUT_OF_RANGE`                                | Quote only: `amount` is outside the corridor's country-wide envelope (message carries the bounds) |
-| `400 PAY_LOW_AMOUNT`                                         | Quote only: `amount` is within range but its payout, after fees, rounds to `0`    |
-| `400 PAY_FAILED_QUOTE`                                       | Quote only: no provider could quote the request                                   |
-| `400 PAY_COUNTRY_NOT_SUPPORTED`                               | `country`/`fiat` maps to no supported corridor                                    |
-| `409 DB_409_DUPLICATE_ENTRY`                                 | `reference` already belongs to a live or settled payment                          |
-| `401 AUTH_401_INVALID_SIGNATURE` / `AUTH_401_INVALID_API_KEY` | Bad/missing signature, key, or stale timestamp (see the Content-Type note above)  |
-| `403 PAY_UNAUTHORIZED_ACCESS`                                 | Tenant valid but has no merchant user                                             |
-| `404 PAY_404_NOT_FOUND`                                       | Payment unknown, or not owned by the caller's tenant — existence is not disclosed |
+| Status / code                                                 | When                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `400 PAY_INVALID_QUOTE_REQUEST`                               | Create: request failed validation; `errors` is an array of `{ field, value, message }` (bad/out-of-range `amount`, mismatched `fiat`/`country`, unsupported `token`, invalid `network`/`type`/`validUntil`, missing/unsafe `reference`/`purpose`, malformed `items`, or an `amount` too low to produce a payout). Quote: non-positive `amount` or unsupported token |
+| `400 PAY_400_INVALID_REQUEST`                                 | Quote only: fiat → fiat pair, or a fiat that does not match `country`                                                                                                                                                                                                                                                                                               |
+| `400 PAY_AMOUNT_OUT_OF_RANGE`                                 | Quote only: `amount` is outside the corridor's country-wide envelope (message carries the bounds)                                                                                                                                                                                                                                                                   |
+| `400 PAY_LOW_AMOUNT`                                          | Quote only: `amount` is within range but its payout, after fees, rounds to `0`                                                                                                                                                                                                                                                                                      |
+| `400 PAY_FAILED_QUOTE`                                        | Quote only: no provider could quote the request                                                                                                                                                                                                                                                                                                                     |
+| `400 PAY_COUNTRY_NOT_SUPPORTED`                               | `country`/`fiat` maps to no supported corridor                                                                                                                                                                                                                                                                                                                      |
+| `409 DB_409_DUPLICATE_ENTRY`                                  | `reference` already belongs to a live or settled payment                                                                                                                                                                                                                                                                                                            |
+| `401 AUTH_401_INVALID_SIGNATURE` / `AUTH_401_INVALID_API_KEY` | Bad/missing signature, key, or stale timestamp (see the Content-Type note above)                                                                                                                                                                                                                                                                                    |
+| `403 PAY_UNAUTHORIZED_ACCESS`                                 | Tenant valid but has no merchant user                                                                                                                                                                                                                                                                                                                               |
+| `404 PAY_404_NOT_FOUND`                                       | Payment unknown, or not owned by the caller's tenant — existence is not disclosed                                                                                                                                                                                                                                                                                   |
 
-### Notes
+#### Notes
 
 * **Create returns the `id` directly** (alongside `redirectUrl`, `code`, and `validUntil`); capture it to poll later. The `id` is **not** in `redirectUrl` — that URL ends in the payer `code` — but you can recover the `id` from your `reference` via the list endpoint.
 * **Terminal is terminal.** Once `status` is `settled`, `failed`, `rejected`, `expired`, or `cancelled`, it won't change again — stop polling.
 * **Sign query strings too.** For the CSV export, the signed `path` includes `?format=csv` exactly as sent — sign the full target, not the bare path.
-* **Quotes are indicative.** The provider and price are fixed when the payment is created, not when you quote — see [How quotes work](#how-quotes-work).
+* **Quotes are indicative.** The provider and price are fixed when the payment is created, not when you quote — see How quotes work.
 * **`amount` is always in the payer's `fiat`.** On create and on reads, `amount` is denominated in `currencyIn` (the fiat); `currencyOut` is your settlement token.
 
 _Updated: 5 October 2026_

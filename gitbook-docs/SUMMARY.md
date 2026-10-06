@@ -11,20 +11,7 @@
 
 ## Code Snippets
 
-* [Signing a request from the CLI](code-snippets/signing-a-request-from-the-cli.md)
-* [Signing requests in Postman](code-snippets/signing-requests-in-postman.md)
-
 ***
 
-* ```yaml
-  props:
-    models: true
-    downloadLink: true
-    grouping: by-operation
-  type: builtin:openapi
-  dependencies:
-    spec:
-      ref:
-        kind: openapi
-        spec: blinx-api
-  ```
+* [Signing a request from the CLI](signing-a-request-from-the-cli.md)
+* [Signing requests in Postman](signing-requests-in-postman.md)

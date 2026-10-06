@@ -1,6 +1,6 @@
 ---
 description: >-
-  Welcome to the developer documentation for the Blinx Merchant Payments API —
+  Welcome to the developer documentation for the Blinx Merchant Payments API —  
   the tenant-facing surface for creating and reading payments.
 ---
 
@@ -13,26 +13,26 @@ This documentation covers operations performed in **sandbox**\
 No real transactions are created
 {% endhint %}
 
-### Scope
+#### Scope
 
 This documentation covers everything a merchant (tenant) integration needs:
 
 * **API reference** — the full endpoint contract lives in the OpenAPI spec, `seller-payments.openapi.yaml`. Render it with any OpenAPI viewer (Redoc, Swagger UI, Stoplight) for interactive docs.
 * **Request authentication** — every request to `/api/merchant/*` is authenticated per call with an **apiKey + apiSecret HMAC signature** (`x-api-key`, `x-timestamp`, `x-signature`). There is no session or bearer token.
 
-### What's covered where
+#### What's covered where
 
-| Topic                                           | Where                          |
-| ----------------------------------------------- | ------------------------------ |
-| Sandbox base URL, API key & secret, first call  | Set up the sandbox             |
-| Endpoints, schemas, error shapes                | `seller-payments.openapi.yaml` |
-| Country reference data (limits, travel rule)    | Get country data               |
-| Quotes (best price across providers)            | Create a Payment → How quotes work |
-| Creating & checking payments, line items        | Create a Payment               |
-| Signing requests in code (CLI)                  | Sign a payment request         |
-| Signing requests in Postman                     | Postman pre-request script     |
+| Topic                                          | Where                              |
+| ---------------------------------------------- | ---------------------------------- |
+| Sandbox base URL, API key & secret, first call | Set up the sandbox                 |
+| Endpoints, schemas, error shapes               | `seller-payments.openapi.yaml`     |
+| Country reference data (limits, travel rule)   | Get country data                   |
+| Quotes (best price across providers)           | Create a Payment → How quotes work |
+| Creating & checking payments, line items       | Create a Payment                   |
+| Signing requests in code (CLI)                 | Sign a payment request             |
+| Signing requests in Postman                    | Postman pre-request script         |
 
-### The signing model in one line
+#### The signing model in one line
 
 ```
 signature = hex HMAC-SHA256( apiSecret, `${timestamp}.${METHOD}.${path}.${sha256hex(body)}` )
@@ -45,7 +45,7 @@ signature = hex HMAC-SHA256( apiSecret, `${timestamp}.${METHOD}.${path}.${sha256
 
 The signature covers the **exact** body bytes — send the body verbatim; never reformat or re-serialize it after signing, or the hash won't match.
 
-### Ready-made helpers
+#### Ready-made helpers
 
 Both helper scripts are self-contained (Node's `crypto` only — no service dependencies) and live under `scripts/`:
 
