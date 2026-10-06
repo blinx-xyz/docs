@@ -1,0 +1,17 @@
+$schema: https://api.gitbook.com/gitbook-docs.yaml
+site:
+  title: merchant
+  structure:
+    - type: space
+      key: space-1
+      title: API Reference
+      path: api-reference
+      default: true
+      content:
+        directory: "./gitbook-docs "
+    - type: space
+      key: space-2
+      title: Dashboard
+      path: dashboard
+      content:
+        directory: ./gitbook-dashboard
