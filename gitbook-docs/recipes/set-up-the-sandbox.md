@@ -27,6 +27,23 @@ Your tenant also carries an **Environments** field (visible on the dashboard). I
 
 ***
 
+#### 0. Create your user
+
+You need to create your user before you can access the API and Dashboard as a tenant.
+
+1. Open the [Blinx App](https://app.sandbox.blinx.xyz) and enter your email address.
+2. Blinx emails you a one-time code (OTP) — enter it to sign in.
+3. You land on the **Send** page.
+4. Proceed with verifying your identity via KYC - a banner will appear to guide you
+5. Once your KYC is approved, you can now proceed to request a merchant account
+   1. open the dropdown menu on the right top corner
+      ![merchant registration](../.gitbook/assets/merchant-registration.png)
+   2. a banner will appear to guide you
+      ![registration banner](../.gitbook/assets/registration-banner.png)
+
+Once your KYB has been approved, we will create your tenant account and will grant you access to the dashboard
+
+
 #### 1. Sign in to the Merchant Dashboard
 
 Your credentials live in the dashboard, so sign in first:
