@@ -1,0 +1,1095 @@
+openapi: 3.1.0
+
+info:
+  title: Blinx Merchant Payments API
+  version: "1.8.0"
+  description: |
+    Merchant-facing endpoints for creating and reading payments. Merchants are
+    authenticated per request with an **apiKey + apiSecret HMAC signature** —
+    there is no session or bearer token.
+
+    ---
+
+    ## 1. Creating the signature
+
+    Every request to `/api/merchant/*` MUST carry three headers:
+
+    | Header        | Value                                                                 |
+    |---------------|-----------------------------------------------------------------------|
+    | `x-api-key`   | your tenant's raw **apiKey**                                           |
+    | `x-timestamp` | current unix time in **milliseconds**, within **±5 minutes** of server |
+    | `x-signature` | lowercase hex **HMAC-SHA256** of the canonical string (below)          |
+
+    The signature is keyed by your **apiSecret** (never sent on the wire) over
+    this canonical string:
+
+    ```
+    {timestamp}.{METHOD}.{path}.{sha256hex(body)}
+    ```
+
+    - `timestamp` — the exact value sent in `x-timestamp`.
+    - `METHOD` — upper-cased HTTP method (`POST`, `GET`).
+    - `path` — the request target (path **+ query string** if any) exactly as sent,
+      e.g. `/api/merchant/payments` or `/api/merchant/payments/abc-123`.
+    - `sha256hex(body)` — SHA-256 (hex) of the **raw request body bytes**. For a
+      request with no body (all GETs here), hash the empty string, which is always
+      `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+
+    Steps:
+    1. `timestamp = Date.now()`
+    2. `bodyHash = sha256_hex(rawBody)`  (empty string for bodyless requests)
+    3. `canonical = timestamp + "." + METHOD + "." + path + "." + bodyHash`
+    4. `signature = hmac_sha256_hex(apiSecret, canonical)`
+    5. Send `x-api-key`, `x-timestamp`, `x-signature`.
+
+    The signature covers the **exact** body bytes — send the body verbatim; do not
+    reformat or re-serialize it after signing, or the hash won't match.
+
+    ### Worked example (reproducible)
+
+    ```
+    apiSecret : blinx_sk_example_secret
+    method    : POST
+    path      : /api/merchant/payments
+    body      : {"amount":"5000","fiat":"NGN","token":"USDC","country":"NG","reference":"abc","purpose":"seize global content","type":"other"}
+
+    x-timestamp : 1785200000000
+    sha256(body): 7f103fc24573c582d19f238db5cebfe82029b5ad4e2357b84d306a53350a7996
+    canonical   : 1785200000000.POST./api/merchant/payments.7f103fc24573c582d19f238db5cebfe82029b5ad4e2357b84d306a53350a7996
+    x-signature : f0e3d37f99d97006f942c9ffa20d32bef44eae9e37040bf6c030a028a0875ead
+    ```
+
+    ### Node.js reference
+
+    ```js
+    const { createHash, createHmac } = require('crypto');
+    const bodyHash = createHash('sha256').update(rawBody).digest('hex'); // '' -> e3b0c442...
+    const canonical = `${timestamp}.${method.toUpperCase()}.${path}.${bodyHash}`;
+    const signature = createHmac('sha256', apiSecret).update(canonical).digest('hex');
+    ```
+
+    ### Ready-made signers
+
+    Two ready-made request signers are available in CODE SNIPPETS:
+
+    ---
+
+    ## 2. Errors
+
+    Failures return `{ "error": { "code", "message", "status" } }` with the matching
+    HTTP status. Auth failures: `401 AUTH_401_INVALID_SIGNATURE` /
+    `401 AUTH_401_INVALID_API_KEY`, or `403 PAY_UNAUTHORIZED_ACCESS` when the tenant
+    has no merchant user.
+
+servers:
+  - url: http://localhost:3001
+    description: Local dev
+  - url: https://api.blinx.example
+    description: Production (replace with your gateway host)
+
+security:
+  - ApiKey: []
+    Timestamp: []
+    Signature: []
+
+tags:
+  - name: Merchant Payments
+    description: Create and read payments as an authenticated merchant (tenant).
+  - name: Merchant Data
+    description: >
+      Read-only reference data for a supported country — currency and dialling
+      info, the travel-rule threshold and required fields for transfers,
+      and payment amount limits per payout channel.
+
+paths:
+  /api/merchant/payments:
+    post:
+      tags: [Merchant Payments]
+      operationId: createPayment
+      summary: Create a payment
+      description: |
+        Creates a payment for the authenticated merchant and returns the hosted
+        `redirectUrl` where the payer completes it, together with the payment's
+        `id` and its `validUntil` expiry.
+
+        The payer pays in the local **`fiat`** currency and the merchant is
+        settled in the **`token`** they choose; `amount` is the decimal amount in
+        that `fiat` currency. `amount` must fall within the supported range for
+        the corridor — bounded per country so that currencies shared across
+        countries (XOF, XAF) are validated correctly. A request that fails
+        validation (bad `amount`, mismatched `fiat`/`country`, unsupported
+        `token`, invalid `network`/`type`/`validUntil`, missing/unsafe
+        `reference`/`purpose`, or malformed `items`) returns
+        `400 PAY_INVALID_QUOTE_REQUEST` with a per-field `errors` array. An
+        unsupported `country`/`fiat` fails with `400 PAY_COUNTRY_NOT_SUPPORTED`,
+        and reusing a `reference` that still belongs to a live or settled
+        payment fails with `409 DB_409_DUPLICATE_ENTRY`.
+
+        Optional `items` attach line items (what the payer is paying for). They
+        are informational: they are shown to the payer on the hosted payment
+        page and never change the amount charged, which is always `amount`.
+
+        The payout provider is picked when the payment is created, from a
+        fresh best quote across the providers serving the corridor. If no
+        provider can quote at that moment the payment is still created and the
+        provider is resolved again when the payer confirms. A merchant
+        `POST /api/merchant/quote` beforehand is indicative only and does not
+        bind the provider used for the payment.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+            example:
+              amount: "5000"
+              fiat: NGN
+              token: USDC
+              country: NG
+              reference: abc
+              purpose: seize global content
+              type: other
+              validUntil: "2026-08-01T00:00:00.000Z"
+              items:
+                - name: Annual subscription
+                  description: Global content plan, 12 months
+                  price: "4000"
+                  units: "1"
+                - name: Setup fee
+                  price: "1000"
+                  units: "1"
+      responses:
+        "201":
+          description: Payment created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePaymentResponse'
+              example:
+                data:
+                  redirectUrl: https://app.blinx.example/payment/foam-bark-95162
+                  validUntil: "2026-08-01T00:00:00.000Z"
+                  code: foam-bark-95162
+                  id: 7b2c1e90-1f0a-4a2e-9a0d-2c3b4d5e6f70
+        "400":
+          $ref: '#/components/responses/InvalidPaymentRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/DuplicateReference'
+    get:
+      tags: [Merchant Payments]
+      operationId: getPayments
+      summary: List the merchant's payments
+      description: |
+        Returns the tenant's payments and top-ups, most recent first. Rows of
+        type `payment` and `topup` are listed together; use the `type` field to
+        tell them apart. A payment still `created`/`viewed` past its
+        `validUntil` is moved to `expired` as the list is read.
+      parameters:
+        - name: format
+          in: query
+          required: false
+          description: |
+            Response representation. `json` (the default) returns the payment
+            array; `csv` returns the same rows as an RFC 4180 CSV file, served
+            as `text/csv` with a `Content-Disposition: attachment` header.
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+      responses:
+        "200":
+          description: |
+            The merchant's payments — a JSON array wrapped in `data` by default,
+            or a CSV file when `format=csv` (the CSV branch is served raw and is
+            not wrapped). Each item is a summary view; retrieve a payment's full
+            description with `GET /api/merchant/payments/{id}`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentSummary'
+              example:
+                data:
+                  - id: ba0ffe1c-85dc-4d10-a0c3-7363a1441e1c
+                    status: created
+                    type: payment
+                    amount: "1"
+                    currencyIn: NGN
+                    currencyOut: USDC
+                    country: NG
+                    reference: abc
+                    purpose: seize global content
+                    paymentType: bank
+                    payerName: Ada Lovelace
+                    seller: seller@example.com
+                    destinationAddress: "0x8439cca53a7f7bcfa3bad61a73e8eceae12d1589"
+                    destinationNetwork: arbitrum
+                    createdAt: "2026-07-31T06:06:39.828Z"
+                    updatedAt: "2026-07-31T06:06:39.828Z"
+            text/csv:
+              schema:
+                type: string
+                format: binary
+              example: |
+                id,status,type,failure,amount,currencyIn,amountUsd,currencyOut,fees,country,reference,purpose,paymentType,payerName,tenant,seller,destinationAddress,destinationNetwork,items,createdAt,cancelledAt,updatedAt
+                ba0ffe1c-85dc-4d10-a0c3-7363a1441e1c,created,payment,,1,NGN,,USDC,,NG,abc,seize global content,bank,Ada Lovelace,Acme,seller@example.com,0x8439cca53a7f7bcfa3bad61a73e8eceae12d1589,arbitrum,,2026-07-31T06:06:39.828Z,,2026-07-31T06:06:39.828Z
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /api/merchant/payments/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Payment id (UUID).
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Merchant Payments]
+      operationId: getMerchantPayment
+      summary: Get a single payment
+      description: |
+        Returns one payment by id, in any status. Scoped to the caller's tenant:
+        if the payment is not owned by the authenticated merchant's tenant,
+        `404 PAY_404_NOT_FOUND` is returned (existence is not disclosed).
+      responses:
+        "200":
+          description: The payment, wrapped in `data`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Payment'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /api/merchant/payments/{id}/status:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Payment id (UUID).
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Merchant Payments]
+      operationId: getMerchantPaymentStatus
+      summary: Get a payment's status
+      description: |
+        Lightweight polling endpoint: returns only the payment's `status`.
+        Same tenant scoping as `GET /api/merchant/payments/{id}` — an unknown
+        id, or one not owned by the caller's tenant, is `404 PAY_404_NOT_FOUND`.
+      responses:
+        "200":
+          description: The payment status, wrapped in `data`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        $ref: '#/components/schemas/PaymentStatus'
+              example:
+                data:
+                  status: processing
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /api/merchant/payments/limits/{country}:
+    get:
+      tags: [Merchant Data]
+      operationId: getPaymentLimits
+      summary: Get the payment amount limits for a country
+      description: |
+        The `payments` block of `GET /api/merchant/data/{country}` on its own:
+        the per-channel `bank`/`momo` bounds and the country-wide `min`/`max`
+        envelope a payment `amount` must fall within. This endpoint is **not**
+        signed — no `x-api-key`/`x-timestamp`/`x-signature` headers are needed.
+      security: []
+      parameters:
+        - name: country
+          in: path
+          required: true
+          description: ISO country code (e.g. `NG`, `KE`, `TZ`).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The country's payment limits, wrapped in `data`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PaymentsLimit'
+              example:
+                data:
+                  bank: { min: 2500, max: 30000000 }
+                  momo: { min: 500, max: 250000 }
+                  min: 500
+                  max: 30000000
+        "400":
+          $ref: '#/components/responses/CountryNotSupported'
+
+  /api/merchant/quote:
+    post:
+      tags: [Merchant Payments]
+      operationId: getQuote
+      summary: Quote a conversion
+      description: |
+        Returns the **best** quote across every payout provider serving the
+        corridor. Each eligible provider is asked to price the request and the
+        one with the highest `amountOut` wins; `providerId` names it.
+
+        The side of the quote is derived from the currency pair:
+
+        | `currencyIn` → `currencyOut` | side      | `amount` is in   |
+        |------------------------------|-----------|------------------|
+        | fiat → token (`NGN`→`USDC`)  | `receive` | the fiat (`currencyIn`) — the payment case |
+        | token → fiat (`USDC`→`NGN`)  | `send`    | the token (`currencyIn`) |
+        | token → token                | `transfer`| the token        |
+
+        Fiat → fiat is rejected. `USD` and `EUR` are accepted as aliases of
+        `USDC` and `EURe`. A token the providers do not settle in directly
+        (e.g. `USDT`, `EURe`) is bridged through a USDC swap; the quote is
+        still expressed in your tokens and carries `swappedToken` /
+        `swappedAmount`.
+
+        The quote is cached for `ttl` seconds (default 1800) against your
+        merchant user, pair and amount. **For payments the quote is
+        indicative:** `POST /api/merchant/payments` takes its own fresh best
+        quote at creation time to pick the provider.
+
+        Errors: a malformed pair or a fiat that does not match `country` →
+        `400 PAY_400_INVALID_REQUEST`; a non-positive `amount` or unsupported
+        token → `400 PAY_INVALID_QUOTE_REQUEST`; an `amount` outside the
+        corridor envelope → `400 PAY_AMOUNT_OUT_OF_RANGE` (message carries the
+        bounds); an in-range amount whose payout rounds to `0` →
+        `400 PAY_LOW_AMOUNT`; no provider able to quote → `400 PAY_FAILED_QUOTE`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteRequest'
+            example:
+              amount: "5000"
+              currencyIn: NGN
+              currencyOut: USDC
+              country: NG
+      responses:
+        "200":
+          description: The best quote, wrapped in `data`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/QuoteResponse'
+              example:
+                data:
+                  currencyIn: NGN
+                  currencyOut: USDC
+                  amountIn: "5000"
+                  amountOut: "3.02"
+                  rate: "1650.00"
+                  localFee: "25"
+                  providerId: "2"
+                  ttl: 1800
+        "400":
+          $ref: '#/components/responses/InvalidQuoteRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /api/merchant/data/{country}:
+    get:
+      tags: [Merchant Data]
+      operationId: getCountryData
+      summary: Get reference data for a country
+      description: |
+        Reference data for a supported country: its currency and dialling info,
+        the travel-rule threshold and required data fields for transfers,
+        and the payment amount limits per payout channel. An unknown or
+        unsupported country answers `400 PAY_COUNTRY_NOT_SUPPORTED`.
+
+        The response is wrapped in `data`.
+      parameters:
+        - name: country
+          in: path
+          required: true
+          description: ISO country code (e.g. `NG`, `KE`, `TZ`).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The country's reference data, wrapped in `data`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CountryData'
+        "400":
+          $ref: '#/components/responses/CountryNotSupported'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: The tenant's raw apiKey.
+    Timestamp:
+      type: apiKey
+      in: header
+      name: x-timestamp
+      description: Unix epoch milliseconds, within ±5 minutes of server time.
+    Signature:
+      type: apiKey
+      in: header
+      name: x-signature
+      description: Hex HMAC-SHA256 over "{timestamp}.{METHOD}.{path}.{sha256hex(body)}" keyed by apiSecret.
+
+  responses:
+    Unauthorized:
+      description: Missing/invalid signature, api key, or expired timestamp.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: AUTH_401_INVALID_SIGNATURE
+              message: Invalid or missing request signature
+              status: 401
+    Forbidden:
+      description: The tenant is valid but has no merchant user.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: PAY_UNAUTHORIZED_ACCESS
+              message: Unauthorized access
+              status: 403
+    NotFound:
+      description: Payment not found (or not owned by the caller).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: PAY_404_NOT_FOUND
+              message: Not Found
+              status: 404
+    CountryNotSupported:
+      description: The `send` currency maps to no supported country.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: PAY_COUNTRY_NOT_SUPPORTED
+              message: Country Not Supported
+              status: 400
+    InvalidPaymentRequest:
+      description: |
+        The payment request failed validation. The error `code` is
+        `PAY_INVALID_QUOTE_REQUEST` and `errors` is an **array** of per-field
+        `{ field, value, message }` entries — every failing field is reported at
+        once. Failures include: an `amount` that is not a positive number or
+        falls outside the corridor's limits (the message carries the `min`/`max`
+        bounds), a `fiat` that does not match the `country`, an unsupported
+        settlement `token`, an invalid `network`, an unknown `type`, a
+        `validUntil` that is not a future ISO 8601 datetime, and a
+        missing or unsafe `reference`/`purpose`.
+
+        An unsupported `country`/`fiat` fails earlier with
+        `400 PAY_COUNTRY_NOT_SUPPORTED`; there `errors` is a single
+        `{ field, value }` object, not an array.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: PAY_INVALID_QUOTE_REQUEST
+              message: Invalid Quote Request
+              status: 400
+              errors:
+                - field: amount
+                  value: "100"
+                  message: "Amount for NGN must be between 2,500 and 30,000,000"
+    DuplicateReference:
+      description: >
+        A payment with the same `reference` already exists for the tenant and is
+        still live or settled. A reference frees up only once its payment reaches
+        a failed terminal state (expired/rejected/failed/cancelled).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: DB_409_DUPLICATE_ENTRY
+              message: Duplicate entry
+              status: 409
+              errors:
+                - field: reference
+                  value: abc
+                  message: reference already exists
+    InvalidQuoteRequest:
+      description: >
+        The quote could not be computed. The `code` tells the reason:
+        `PAY_400_INVALID_REQUEST` — a fiat → fiat pair, or a fiat that does not
+        match `country` (`errors` names `currencyIn`/`currencyOut`/`country`);
+        `PAY_COUNTRY_NOT_SUPPORTED` — unknown `country`;
+        `PAY_INVALID_QUOTE_REQUEST` — a non-positive `amount` or a token other
+        than `EURe`/`USDC`/`USDT` (`errors` is a per-field array);
+        `PAY_AMOUNT_OUT_OF_RANGE` — `amount` is outside the corridor envelope
+        (the message carries the bounds); `PAY_LOW_AMOUNT` — in range, but the
+        payout after fees rounds to `0`; `PAY_FAILED_QUOTE` — no provider could
+        quote the request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: PAY_400_INVALID_REQUEST
+              message: Invalid Request
+              status: 400
+              errors:
+                - field: currencyIn
+                  value: KES
+                  message: Currency does not correspond to country
+
+  schemas:
+    CountryData:
+      type: object
+      description: Reference data for a supported country (wrapped in `data` by the response).
+      properties:
+        code:
+          type: string
+          example: NG
+        label:
+          type: string
+          example: Nigeria · NGN
+        currency:
+          type: string
+          example: NGN
+        dialCode:
+          type: string
+          example: "+234"
+        phoneLength:
+          type: integer
+          example: 9
+        transfer:
+          type: object
+          description: Travel-rule inputs for transfers.
+          properties:
+            minAmount:
+              type: number
+              description: Threshold at/above which `travelRuleData` is required.
+            dataFields:
+              type: string
+              description: Delimited list of the field names the travel rule requires.
+        payments:
+          type: object
+          description: >
+            Payment amount limits. `bank`/`momo` are the per-channel `{min, max}`
+            bounds (either may be absent), and `min`/`max` are the widest envelope
+            across the country's channels.
+          properties:
+            bank:
+              $ref: '#/components/schemas/AmountLimit'
+            momo:
+              $ref: '#/components/schemas/AmountLimit'
+            min:
+              type: number
+            max:
+              type: number
+      example:
+        code: NG
+        label: Nigeria · NGN
+        currency: NGN
+        dialCode: "+234"
+        phoneLength: 9
+        transfer:
+          minAmount: 1000
+          dataFields: originatorName,originatorAddress
+        payments:
+          bank: { min: 2500, max: 30000000 }
+          momo: { min: 500, max: 250000 }
+          min: 500
+          max: 30000000
+
+    AmountLimit:
+      type: object
+      properties:
+        min:
+          type: number
+        max:
+          type: number
+
+    PaymentRequest:
+      type: object
+      required: [amount, fiat, token, reference, purpose, country]
+      properties:
+        amount:
+          type: string
+          description: >
+            Decimal amount as a string, denominated in the `fiat` currency the
+            payer pays. Must fall within the corridor's supported range.
+          example: "5000"
+        fiat:
+          type: string
+          description: >
+            Local fiat currency the payer pays in (ISO 4217), e.g. NGN, KES, GHS.
+            Determines the corridor and the amount limits applied.
+          example: NGN
+        token:
+          type: string
+          description: Settlement token the merchant is paid out in.
+          example: USDC
+        country:
+          type: string
+          description: >
+            ISO 3166-1 alpha-2 country code. Disambiguates countries that share a
+            `fiat` currency (XOF, XAF); falls back to `fiat` when omitted.
+          example: NG
+        reference:
+          type: string
+          description: Your unique reference for the payment.
+          example: abc
+        purpose:
+          type: string
+          description: Human-readable description shown to the payer.
+          example: seize global content
+        type:
+          type: string
+          description: Reason for the payment. Defaults to `other` when omitted.
+          enum: [gift, bills, groceries, travel, health, entertainment, housing, school-fees, other]
+          default: other
+          example: other
+        validUntil:
+          type: string
+          description: >
+            Optional expiry (ISO 8601 timestamp, must be in the future).
+            Defaults to 24 hours after creation.
+          example: "2026-08-01T00:00:00.000Z"
+        network:
+          type: string
+          description: >
+            Optional settlement network. When set, your vault must hold an
+            active address for `{token}_{network}`, otherwise the field fails
+            validation. When omitted, your vault's default address is used.
+          example: arbitrum
+        items:
+          type: array
+          description: >
+            Optional line items describing what the payer is paying for, shown
+            on the hosted payment page. Informational only — they are not summed
+            or checked against `amount`. When present the list must hold 1–200
+            items, and the whole request fails if any item is invalid.
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/PaymentItem'
+
+    PaymentItem:
+      type: object
+      description: One line item of a payment.
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          description: Item label shown to the payer. Required, non-empty.
+          example: Annual subscription
+        description:
+          type: string
+          description: Optional longer text for the item (no length limit).
+          example: Global content plan, 12 months
+        price:
+          type: string
+          maxLength: 255
+          description: >
+            Optional unit price as a decimal string, in the payment's `fiat`.
+            Must parse as a number when non-empty.
+          example: "4000"
+        units:
+          type: string
+          maxLength: 255
+          description: Optional quantity, as a string (e.g. `"1"`, `"2 kg"`).
+          example: "1"
+
+    PaymentsLimit:
+      type: object
+      description: >
+        Payment amount limits for a country, in its fiat currency. `bank`/`momo`
+        are the per-channel bounds (either may be absent); `min`/`max` are the
+        country-wide envelope a payment `amount` must fall within.
+      properties:
+        bank:
+          $ref: '#/components/schemas/AmountLimit'
+        momo:
+          $ref: '#/components/schemas/AmountLimit'
+        min:
+          type: number
+        max:
+          type: number
+
+    PaymentStatus:
+      type: string
+      description: >
+        Payment lifecycle status. Terminal: `settled` (paid) and `failed`,
+        `rejected`, `expired`, `cancelled` (not paid). `viewed` means the payer
+        opened the hosted page but has not confirmed yet.
+      enum: [created, viewed, waiting, processing, validated, refunding, refunded, expired, rejected, failed, cancelled, settled]
+
+    CreatePaymentResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            redirectUrl:
+              type: string
+              format: uri
+              description: >
+                Hosted URL where the payer completes the payment
+                (`{appUrl}/payment/{code}` — keyed on the payer `code`, not the id).
+            validUntil:
+              type: string
+              format: date-time
+              description: When the payment expires (ISO 8601).
+            code:
+              type: string
+              description: >
+                Short human-readable payer code (format `word-word-####C`). It is
+                the last path segment of `redirectUrl`; the payment `id` never
+                appears in the payer link.
+              example: foam-bark-95162
+            id:
+              type: string
+              format: uuid
+              description: The created payment's id (used for GET /payments/{id}).
+
+    QuoteRequest:
+      type: object
+      required: [amount, currencyIn, currencyOut, country]
+      properties:
+        amount:
+          type: string
+          description: >
+            Decimal amount as a string, in `currencyIn`. For a payment quote
+            (fiat → token) this is the fiat amount the payer pays.
+          example: "5000"
+        currencyIn:
+          type: string
+          description: >
+            What is paid in — a fiat (must be `country`'s currency) or a token
+            (`EURe`, `USDC`, `USDT`; `EUR`/`USD` are aliases of `EURe`/`USDC`).
+          example: NGN
+        currencyOut:
+          type: string
+          description: What is delivered — a token, or `country`'s fiat.
+          example: USDC
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 code of the corridor.
+          example: NG
+        channel:
+          type: string
+          enum: [bank, momo]
+          description: >
+            Optional payout channel. Defaults to the country's first channel for
+            the quote side.
+        providers:
+          type: array
+          description: >
+            Optional allow-list of provider ids to quote from (e.g. `["2"]`).
+            Omit to compete every provider serving the corridor.
+          items:
+            type: string
+
+    QuoteResponse:
+      type: object
+      properties:
+        currencyIn:
+          type: string
+          description: Echo of the requested `currencyIn`.
+          example: NGN
+        currencyOut:
+          type: string
+          description: Echo of the requested `currencyOut`.
+          example: USDC
+        amountIn:
+          type: string
+          description: Amount paid in `currencyIn`.
+          example: "5000"
+        amountOut:
+          type: string
+          description: Amount delivered in `currencyOut`, after fees.
+          example: "3.02"
+        rate:
+          type: string
+          description: >
+            Exchange rate, in fiat per token unit (end-to-end when a swap is
+            involved).
+          example: "1650.00"
+        localFee:
+          type: string
+          description: Provider fee, in the corridor's fiat currency.
+          example: "25"
+        convertedAmount:
+          type: string
+          description: Provider-specific intermediate amount; omitted when not set.
+        providerId:
+          type: string
+          description: >
+            The provider whose quote won (highest `amountOut`): `"1"` Paycrest,
+            `"2"` YellowCard.
+          example: "2"
+        ttl:
+          type: integer
+          description: >
+            Seconds the quote stays cached for your user, pair and amount
+            (default 1800).
+          example: 1800
+        swappedToken:
+          type: string
+          description: >
+            Present only when a swap bridges your token and the providers'
+            settlement token: the token the providers actually priced (USDC).
+          example: USDC
+        swappedAmount:
+          type: string
+          description: Present only with `swappedToken` — the amount of it priced.
+
+    Payment:
+      type: object
+      description: >
+        A payment as returned by `GET /api/merchant/payments/{id}` — the same
+        flat shape as a `PaymentSummary` row. Null/unknown fields are omitted.
+      allOf:
+        - $ref: '#/components/schemas/PaymentSummary'
+      example:
+        id: 7b2c1e90-1f0a-4a2e-9a0d-2c3b4d5e6f70
+        status: processing
+        type: payment
+        amount: "5000"
+        currencyIn: NGN
+        currencyOut: USDC
+        fees: "25"
+        country: NG
+        reference: abc
+        purpose: seize global content
+        paymentType: bank
+        payerName: Ada Lovelace
+        tenant: Acme
+        seller: seller@example.com
+        destinationAddress: "0x8439cca53a7f7bcfa3bad61a73e8eceae12d1589"
+        destinationNetwork: arbitrum
+        items:
+          - name: Annual subscription
+            description: Global content plan, 12 months
+            price: "4000"
+            units: "1"
+          - name: Setup fee
+            price: "1000"
+            units: "1"
+        createdAt: "2026-07-27T10:15:00.000Z"
+        updatedAt: "2026-07-27T10:21:40.000Z"
+
+    PaymentSummary:
+      type: object
+      description: >
+        Flat payment row returned by the list endpoint
+        (`GET /api/merchant/payments`) and, as `Payment`, by
+        `GET /api/merchant/payments/{id}`. In JSON, null/unknown fields are
+        omitted; the CSV export renders the same fields as columns (empty when
+        unset). The property order below is the CSV column order.
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        type:
+          type: string
+          enum: [payment, topup]
+          description: Row kind — a merchant `payment` or a vault `topup`.
+        failure:
+          type: string
+          description: Reason of the last failure or expiry; omitted when none.
+        amount:
+          type: string
+          description: Payment amount, denominated in `currencyIn`.
+        currencyIn:
+          type: string
+          description: Source currency the payer pays.
+        amountUsd:
+          type: string
+          description: USD-denominated amount when known; omitted otherwise.
+        currencyOut:
+          type: string
+          description: Settlement (destination) currency the merchant receives.
+        fees:
+          type: string
+          description: Fees applied to the payment; omitted when not set.
+        country:
+          type: string
+        reference:
+          type: string
+        purpose:
+          type: string
+          description: Maps from the transfer memo; omitted when absent.
+        paymentType:
+          type: string
+          description: >
+            Payer account type (`bank`, `momo` or `crypto`). Omitted when the
+            payment has no recorded payer yet.
+        payerName:
+          type: string
+          description: Payer account name; omitted when no payer is recorded.
+        tenant:
+          type: string
+          description: Your tenant name.
+        seller:
+          type: string
+          description: Seller email when resolved, otherwise the recipient account name.
+        destinationAddress:
+          type: string
+          description: Recipient wallet address for the settlement destination.
+        destinationNetwork:
+          type: string
+          description: Recipient network for the settlement destination.
+        items:
+          type: array
+          description: >
+            The payment's line items, as sent on create. Returned by
+            `GET /api/merchant/payments/{id}`; not populated by the list
+            endpoint (always empty in CSV).
+          items:
+            $ref: '#/components/schemas/PaymentItem'
+        createdAt:
+          type: string
+          format: date-time
+        cancelledAt:
+          type: string
+          format: date-time
+          description: When the payment was cancelled; omitted while not cancelled.
+        updatedAt:
+          type: string
+          format: date-time
+      example:
+        id: ba0ffe1c-85dc-4d10-a0c3-7363a1441e1c
+        status: created
+        amount: "1"
+        currencyIn: NGN
+        currencyOut: USDC
+        country: NG
+        reference: abc
+        purpose: seize global content
+        paymentType: bank
+        payerName: Ada Lovelace
+        seller: seller@example.com
+        destinationAddress: "0x8439cca53a7f7bcfa3bad61a73e8eceae12d1589"
+        destinationNetwork: arbitrum
+        createdAt: "2026-07-31T06:06:39.828Z"
+        updatedAt: "2026-07-31T06:06:39.828Z"
+
+    ErrorResponse:
+      type: object
+      description: >
+        The failure envelope: `{ error: ErrorDef }`, rendered by
+        `DataResponse.fromError`. Mirrors the backend `ErrorDef` model.
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, status]
+          properties:
+            code:
+              type: string
+              description: >
+                Stable machine string clients may branch on (e.g.
+                `PAY_400_INVALID_REQUEST`).
+            message:
+              type: string
+              description: >
+                Fixed human description. Never interpolates caller input or
+                provider text.
+            status:
+              type: integer
+              description: The HTTP status the response was sent with.
+            errors:
+              type: array
+              description: >
+                Optional field-level detail — a `ValidationError[]`, one entry
+                per offending field, so a bad request reports them all at once.
+                Absent when the error has no per-field detail.
+              items:
+                $ref: '#/components/schemas/ValidationError'
+
+    ValidationError:
+      type: object
+      description: >
+        One field-level validation failure, as carried in an `ErrorDef`'s
+        `errors` array (backend `ValidationError`).
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          description: >
+            The request field the failure is about — e.g. `amount`, or a dotted
+            path like `travelRuleData.originatorName`.
+          example: amount
+        message:
+          type: string
+          description: Human-readable reason for the failure.
+          example: "Amount for NGN must be between 2,500 and 30,000,000"
+        value:
+          description: >
+            The offending value, echoed back to help the caller. Optional, and
+            omitted for anything sensitive or absent.
+          example: "100"
