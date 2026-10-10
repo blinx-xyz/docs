@@ -114,13 +114,11 @@ paths:
 
         The payer pays in the local **`fiat`** currency and the merchant is
         settled in the **`token`** they choose; `amount` is the decimal amount in
-        that `fiat` currency. `amount` must fall within the supported range for
-        the corridor — bounded per country so that currencies shared across
-        countries (XOF, XAF) are validated correctly. A request that fails
-        validation (bad `amount`, mismatched `fiat`/`country`, unsupported
-        `token`, invalid `network`/`type`/`validUntil`, missing/unsafe
-        `reference`/`purpose`, or malformed `items`) returns
-        `400 PAY_INVALID_QUOTE_REQUEST` with a per-field `errors` array. An
+        that `fiat` currency. A request that fails validation (non-positive
+        `amount`, mismatched `fiat`/`country`, unsupported `token`, invalid
+        `network`/`type`/`validUntil`, missing/unsafe `reference`/`purpose`, or
+        malformed `items`) returns `400 PAY_INVALID_QUOTE_REQUEST` with a
+        per-field `errors` array. An
         unsupported `country`/`fiat` fails with `400 PAY_COUNTRY_NOT_SUPPORTED`,
         and reusing a `reference` that still belongs to a live or settled
         payment fails with `409 DB_409_DUPLICATE_ENTRY`.
@@ -129,10 +127,14 @@ paths:
         are informational: they are shown to the payer on the hosted payment
         page and never change the amount charged, which is always `amount`.
 
-        The payout provider is picked when the payment is created, from a
-        fresh best quote across the providers serving the corridor. If no
-        provider can quote at that moment the payment is still created and the
-        provider is resolved again when the payer confirms. A merchant
+        The `amount` is checked against the payout providers' own quotes, with
+        the same errors as `POST /api/merchant/quote` (no `errors` array): an
+        amount no provider serves fails with `400 PAY_AMOUNT_OUT_OF_RANGE` (the
+        message carries the bounds), one whose payout rounds to `0` with
+        `400 PAY_LOW_AMOUNT`, and no provider able to quote with
+        `503 PAY_FAILED_QUOTE` (retry later); nothing is stored. When exactly
+        one provider can serve it, that provider is fixed on the payment;
+        otherwise the payer's bank picks it when the payer confirms. A merchant
         `POST /api/merchant/quote` beforehand is indicative only and does not
         bind the provider used for the payment.
       requestBody:
@@ -179,6 +181,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "409":
           $ref: '#/components/responses/DuplicateReference'
+        "503":
+          $ref: '#/components/responses/QuoteUnavailable'
     get:
       tags: [Merchant Payments]
       operationId: getPayments
@@ -386,12 +390,16 @@ paths:
         indicative:** `POST /api/merchant/payments` takes its own fresh best
         quote at creation time to pick the provider.
 
+        `network` is **required**: providers price per chain, so quote on the
+        network the payment will settle to (e.g. `BASE`).
+
         Errors: a malformed pair or a fiat that does not match `country` →
-        `400 PAY_400_INVALID_REQUEST`; a non-positive `amount` or unsupported
-        token → `400 PAY_INVALID_QUOTE_REQUEST`; an `amount` outside the
-        corridor envelope → `400 PAY_AMOUNT_OUT_OF_RANGE` (message carries the
-        bounds); an in-range amount whose payout rounds to `0` →
-        `400 PAY_LOW_AMOUNT`; no provider able to quote → `400 PAY_FAILED_QUOTE`.
+        `400 PAY_400_INVALID_REQUEST`; a missing `network`, a non-positive
+        `amount` or an unsupported token → `400 PAY_INVALID_QUOTE_REQUEST`
+        (per-field `errors`); an `amount` no provider serves →
+        `400 PAY_AMOUNT_OUT_OF_RANGE` (message carries the bounds); an in-range
+        amount whose payout rounds to `0` → `400 PAY_LOW_AMOUNT`; no provider
+        able to quote → `503 PAY_FAILED_QUOTE` (retry later).
       requestBody:
         required: true
         content:
@@ -403,6 +411,7 @@ paths:
               currencyIn: NGN
               currencyOut: USDC
               country: NG
+              network: BASE
       responses:
         "200":
           description: The best quote, wrapped in `data`.
@@ -429,6 +438,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/QuoteUnavailable'
 
   /api/merchant/data/{country}:
     get:
@@ -534,9 +545,8 @@ components:
         The payment request failed validation. The error `code` is
         `PAY_INVALID_QUOTE_REQUEST` and `errors` is an **array** of per-field
         `{ field, value, message }` entries — every failing field is reported at
-        once. Failures include: an `amount` that is not a positive number or
-        falls outside the corridor's limits (the message carries the `min`/`max`
-        bounds), a `fiat` that does not match the `country`, an unsupported
+        once. Failures include: an `amount` that is not a positive number, a
+        `fiat` that does not match the `country`, an unsupported
         settlement `token`, an invalid `network`, an unknown `type`, a
         `validUntil` that is not a future ISO 8601 datetime, and a
         missing or unsafe `reference`/`purpose`.
@@ -544,19 +554,33 @@ components:
         An unsupported `country`/`fiat` fails earlier with
         `400 PAY_COUNTRY_NOT_SUPPORTED`; there `errors` is a single
         `{ field, value }` object, not an array.
+
+        An `amount` no payout provider serves answers `PAY_AMOUNT_OUT_OF_RANGE`
+        (bounds in the message, no `errors`), and one whose payout rounds to `0`
+        answers `PAY_LOW_AMOUNT`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
-          example:
-            error:
-              code: PAY_INVALID_QUOTE_REQUEST
-              message: Invalid Quote Request
-              status: 400
-              errors:
-                - field: amount
-                  value: "100"
+          examples:
+            validation:
+              summary: A field failed validation
+              value:
+                error:
+                  code: PAY_INVALID_QUOTE_REQUEST
+                  message: Invalid Quote Request
+                  status: 400
+                  errors:
+                    - field: amount
+                      value: "-5"
+                      message: must be a positive number
+            outOfRange:
+              summary: No provider serves the amount
+              value:
+                error:
+                  code: PAY_AMOUNT_OUT_OF_RANGE
                   message: "Amount for NGN must be between 2,500 and 30,000,000"
+                  status: 400
     DuplicateReference:
       description: >
         A payment with the same `reference` already exists for the tenant and is
@@ -581,12 +605,12 @@ components:
         `PAY_400_INVALID_REQUEST` — a fiat → fiat pair, or a fiat that does not
         match `country` (`errors` names `currencyIn`/`currencyOut`/`country`);
         `PAY_COUNTRY_NOT_SUPPORTED` — unknown `country`;
-        `PAY_INVALID_QUOTE_REQUEST` — a non-positive `amount` or a token other
-        than `EURe`/`USDC`/`USDT` (`errors` is a per-field array);
-        `PAY_AMOUNT_OUT_OF_RANGE` — `amount` is outside the corridor envelope
-        (the message carries the bounds); `PAY_LOW_AMOUNT` — in range, but the
-        payout after fees rounds to `0`; `PAY_FAILED_QUOTE` — no provider could
-        quote the request.
+        `PAY_INVALID_QUOTE_REQUEST` — a missing `network`, a non-positive
+        `amount` or a token other than `EURe`/`USDC`/`USDT` (`errors` is a
+        per-field array); `PAY_AMOUNT_OUT_OF_RANGE` — no provider serves the
+        `amount` (the message carries the bounds); `PAY_LOW_AMOUNT` — in range,
+        but the payout after fees rounds to `0`. No provider able to quote at
+        all is `503 PAY_FAILED_QUOTE` (see QuoteUnavailable).
       content:
         application/json:
           schema:
@@ -600,6 +624,19 @@ components:
                 - field: currencyIn
                   value: KES
                   message: Currency does not correspond to country
+    QuoteUnavailable:
+      description: >
+        No payout provider could quote the request right now. The error `code` is
+        `PAY_FAILED_QUOTE` and the status is always `503`: retry later.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: PAY_FAILED_QUOTE
+              message: No quotes available from any provider
+              status: 503
 
   schemas:
     CountryData:
@@ -815,7 +852,7 @@ components:
 
     QuoteRequest:
       type: object
-      required: [amount, currencyIn, currencyOut, country]
+      required: [amount, currencyIn, currencyOut, country, network]
       properties:
         amount:
           type: string
@@ -837,6 +874,13 @@ components:
           type: string
           description: ISO 3166-1 alpha-2 code of the corridor.
           example: NG
+        network:
+          type: string
+          description: >
+            Network the payment settles to — the network of your
+            `{token}_{network}` vault address (e.g. `BASE`). Required: providers
+            price per chain.
+          example: BASE
         channel:
           type: string
           enum: [bank, momo]
