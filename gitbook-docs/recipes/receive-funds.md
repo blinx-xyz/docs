@@ -1,5 +1,9 @@
 # Receive Funds
 
+{% hint style="info" %}
+The full request/response contract is in the latest OpenAPI spec: [blinx-api.yaml](https://openapi.gitbook.com/o/qIJeTD9Swqwc0lE9nsEa/spec/blinx-api.yaml).
+{% endhint %}
+
 ### Receive money from a third-party sender
 
 A practical guide to **receiving** funds from a third party — a customer, a partner, anyone who pays you in their local currency — straight into your vault, with no Blinx payer page in between. You create the receive, forward the deposit instructions (or let the provider collect a mobile-money payment), and follow the status until it settles. For the exact request/response contract see the OpenAPI spec (`blinx-openapi.yaml`, tag _Merchant Receive_); for signing see the main README and Sign a request.
@@ -51,7 +55,6 @@ All endpoints are under `/api/merchant` and require the standard apiKey + apiSec
 #### Before you start
 
 * Your tenant has passed **KYB and KYC** — `POST /receive` answers `403 GATE_403_KYB_REQUIRED` / `GATE_403_KYC_REQUIRED` otherwise.
-* Your vault has an **active address**: the receive settles there. Without one the receive answers `409 PAY_409_NO_SETTLEMENT_ASSET`.
 
 #### Signing requests
 

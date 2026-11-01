@@ -1,5 +1,9 @@
 # Create a Payment
 
+{% hint style="info" %}
+The full request/response contract is in the latest OpenAPI spec: [blinx-api.yaml](https://openapi.gitbook.com/o/qIJeTD9Swqwc0lE9nsEa/spec/blinx-api.yaml).
+{% endhint %}
+
 ### Create and check a payment
 
 A practical guide to creating a **payment**, handing it off to the payer, and learning its outcome. For the exact request/response contract see the OpenAPI spec (`blinx-openapi.yaml`, tag _Merchant Payments_); for signing see the main README and Sign a payment request.
