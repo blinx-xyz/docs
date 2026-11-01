@@ -17,7 +17,7 @@ No real transactions are created
 
 This documentation covers everything a merchant (tenant) integration needs:
 
-* **API reference** — the full endpoint contract lives in the OpenAPI spec, `seller-payments.openapi.yaml`. Render it with any OpenAPI viewer (Redoc, Swagger UI, Stoplight) for interactive docs.
+* **API reference** — the full endpoint contract lives in the OpenAPI spec, `blinx-openapi.yaml`. Render it with any OpenAPI viewer (Redoc, Swagger UI, Stoplight) for interactive docs.
 * **Request authentication** — every request to `/api/merchant/*` is authenticated per call with an **apiKey + apiSecret HMAC signature** (`x-api-key`, `x-timestamp`, `x-signature`). There is no session or bearer token.
 
 #### What's covered where
@@ -25,7 +25,7 @@ This documentation covers everything a merchant (tenant) integration needs:
 | Topic                                          | Where                              |
 | ---------------------------------------------- | ---------------------------------- |
 | Sandbox base URL, API key & secret, first call | Set up the sandbox                 |
-| Endpoints, schemas, error shapes               | `seller-payments.openapi.yaml`     |
+| Endpoints, schemas, error shapes               | `blinx-openapi.yaml`     |
 | Country reference data (limits, travel rule)   | Get country data                   |
 | Quotes (best price across providers)           | Create a Payment → How quotes work |
 | Creating & checking payments, line items       | Create a Payment                   |
