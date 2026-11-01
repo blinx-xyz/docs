@@ -129,7 +129,7 @@ paths:
 
         At least one is required; with both, `amountUsd` decides. A request that
         fails validation (neither amount, a non-positive `amount`/`amountUsd`, mismatched `fiat`/`country`, unsupported `token`, invalid
-        `network`/`type`/`validUntil`, missing/unsafe `reference`/`purpose`, or
+        `type`/`validUntil`, missing/unsafe `reference`/`purpose`, or
         malformed `items`) returns `400 PAY_INVALID_QUOTE_REQUEST` with a
         per-field `errors` array. An
         unsupported `country`/`fiat` fails with `400 PAY_COUNTRY_NOT_SUPPORTED`,
@@ -889,7 +889,7 @@ components:
         once. Failures include: neither `amount` nor `amountUsd`, an `amount` or
         `amountUsd` that is not a positive number, a
         `fiat` that does not match the `country`, an unsupported
-        settlement `token`, an invalid `network`, an unknown `type`, a
+        settlement `token`, an unknown `type`, a
         `validUntil` that is not a future ISO 8601 datetime, and a
         missing or unsafe `reference`/`purpose`.
 
@@ -1125,14 +1125,6 @@ components:
             Optional expiry (ISO 8601 timestamp, must be in the future).
             Defaults to 24 hours after creation.
           example: "2026-08-01T00:00:00.000Z"
-        network:
-          type: string
-          description: >
-            Optional. A payment always settles to your vault address (one per
-            tenant, with one network and token set at onboarding). When sent,
-            `{token}_{network}` must match that address, otherwise the request
-            fails validation (`destination` field error). Usually omitted.
-          example: arbitrum
         items:
           type: array
           description: >

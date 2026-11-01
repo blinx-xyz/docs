@@ -45,7 +45,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"amount\": \"1500\",\n  \"fiat\": \"BWP\",\n  \"token\": \"USDC\",\n  \"country\": \"BW\",\n  \"network\": \"BASE\",\n  \"type\": \"gift\",\n  \"reference\": \"{{$guid}}\",\n  \"purpose\": \"{{$randomBs}}\",\n  \"validUntil\": {{valid_until}}\n}",
+              "raw": "{\n  \"amount\": \"1500\",\n  \"fiat\": \"BWP\",\n  \"token\": \"USDC\",\n  \"country\": \"BW\",\n  \"type\": \"gift\",\n  \"reference\": \"{{$guid}}\",\n  \"purpose\": \"{{$randomBs}}\",\n  \"validUntil\": {{valid_until}}\n}",
               "options": {
                 "raw": {
                   "language": "json"
