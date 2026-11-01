@@ -1,7 +1,7 @@
 {
   "info": {
-    "_postman_id": "6aedcb08-0604-4b77-b6eb-333ad5922735",
-    "name": "Blinx API",
+    "_postman_id": "7d4370b4-375e-443f-b330-ac9d792bd956",
+    "name": "Blinx API Copy",
     "description": "Blinx API (signed requests). Set api_key and api_secret; the collection pre-request script signs every request (x-api-key, x-timestamp, x-signature). See docs/postman-pre-request.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "386887"
@@ -318,10 +318,20 @@
     },
     {
       "name": "receive",
-      "description": "Receive funds from a third-party sender: quote → networks → verification → receive → get receive / status. Set receive_country / receive_currency / receive_channel first.",
       "item": [
         {
-          "name": "quote",
+          "name": "quote received",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Saves the quote's figures for the following request.\ntry {\n  const q = pm.response.json().data;\n  if (q) {\n    pm.collectionVariables.set(\"receive_amount_in\", q.amountIn);\n    pm.collectionVariables.set(\"receive_amount_out\", q.amountOut);\n    pm.collectionVariables.set(\"receive_rate\", q.rate);\n    console.log(\"receive quote:\", q.amountIn, q.currencyIn, \"->\", q.amountOut, q.currencyOut, \"@\", q.rate);\n  }\n} catch (e) {\n  console.log(\"Response is not JSON:\", e.message);\n}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -330,6 +340,15 @@
                 "value": "application/json"
               }
             ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountOut\": \"5\",\n  \"currencyIn\": \"{{receive_currency}}\",\n  \"country\": \"{{receive_country}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{sandbox_url}}/api/merchant/quote",
               "host": [
@@ -341,59 +360,57 @@
                 "quote"
               ]
             },
-            "description": "Step 1 of a receive: quote what the sender pays in their fiat (amountIn, in receive_currency) against the USD you receive. Send amountOut instead to fix the USD you want. The script saves amountIn / amountOut / rate for the receive request.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"amountIn\": \"5000\",\n  \"currencyIn\": \"{{receive_currency}}\",\n  \"currencyOut\": \"USD\",\n  \"country\": \"{{receive_country}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "description": "Step 1 of a receive: quote what the sender pays in their fiat (amountIn, in receive_currency) against the USD you receive. Send amountOut instead to fix the USD you want. The script saves amountIn / amountOut / rate for the receive request."
           },
+          "response": []
+        },
+        {
+          "name": "quote sent",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// Saves the quote's figures for the following request.",
-                  "try {",
-                  "  const q = pm.response.json().data;",
-                  "  if (q) {",
-                  "    pm.collectionVariables.set(\"receive_amount_in\", q.amountIn);",
-                  "    pm.collectionVariables.set(\"receive_amount_out\", q.amountOut);",
-                  "    pm.collectionVariables.set(\"receive_rate\", q.rate);",
-                  "    console.log(\"receive quote:\", q.amountIn, q.currencyIn, \"->\", q.amountOut, q.currencyOut, \"@\", q.rate);",
-                  "  }",
-                  "} catch (e) {",
-                  "  console.log(\"Response is not JSON:\", e.message);",
-                  "}"
+                  "// Saves the quote's figures for the following request.\ntry {\n  const q = pm.response.json().data;\n  if (q) {\n    pm.collectionVariables.set(\"receive_amount_in\", q.amountIn);\n    pm.collectionVariables.set(\"receive_amount_out\", q.amountOut);\n    pm.collectionVariables.set(\"receive_rate\", q.rate);\n    console.log(\"receive quote:\", q.amountIn, q.currencyIn, \"->\", q.amountOut, q.currencyOut, \"@\", q.rate);\n  }\n} catch (e) {\n  console.log(\"Response is not JSON:\", e.message);\n}"
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "networks",
+          ],
           "request": {
-            "method": "GET",
-            "header": [],
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountIn\": \"6823.45\",\n  \"currencyIn\": \"{{receive_currency}}\",\n  \"country\": \"{{receive_country}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
-              "raw": "{{sandbox_url}}/api/merchant/network/{{receive_country}}",
+              "raw": "{{sandbox_url}}/api/merchant/quote",
               "host": [
                 "{{sandbox_url}}"
               ],
               "path": [
                 "api",
                 "merchant",
-                "network",
-                "{{receive_country}}"
+                "quote"
               ]
             },
-            "description": "Bank / mobile-money networks a sender in receive_country can pay from. The post-response script stores the first network of receive_channel in {{source_network_id}}."
+            "description": "Step 1 of a receive: quote what the sender pays in their fiat (amountIn, in receive_currency) against the USD you receive. Send amountOut instead to fix the USD you want. The script saves amountIn / amountOut / rate for the receive request."
           },
+          "response": []
+        },
+        {
+          "name": "networks",
           "event": [
             {
               "listen": "test",
@@ -416,7 +433,25 @@
                 ]
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/network/{{receive_country}}",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "network",
+                "{{receive_country}}"
+              ]
+            },
+            "description": "Bank / mobile-money networks a sender in receive_country can pay from. The post-response script stores the first network of receive_channel in {{source_network_id}}."
+          },
+          "response": []
         },
         {
           "name": "verification",
@@ -428,6 +463,15 @@
                 "value": "application/json"
               }
             ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountIdentifier\": \"1111111111\",\n  \"networkId\": \"{{source_network_id}}\",\n  \"country\": \"{{receive_country}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{sandbox_url}}/api/merchant/verification",
               "host": [
@@ -439,50 +483,12 @@
                 "verification"
               ]
             },
-            "description": "Verify the sender's account on its network: {accountIdentifier, networkId, country?} → {data: {success, accountName?}}. A mobile number (+) on a bank network is a 400. Sandbox: 0000000000 / 1111111111 always verify.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"accountIdentifier\": \"1111111111\",\n  \"networkId\": \"{{source_network_id}}\",\n  \"country\": \"{{receive_country}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
+            "description": "Verify the sender's account on its network: {accountIdentifier, networkId, country?} → {data: {success, accountName?}}. A mobile number (+) on a bank network is a 400. Sandbox: 0000000000 / 1111111111 always verify."
+          },
+          "response": []
         },
         {
           "name": "receive",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{sandbox_url}}/api/merchant/receive",
-              "host": [
-                "{{sandbox_url}}"
-              ],
-              "path": [
-                "api",
-                "merchant",
-                "receive"
-              ]
-            },
-            "description": "Create a receive (KYB + KYC required). amountIn / amountOut / rate come from the quote request; settles in USDC to the vault address (currencyOut ignored). source = {accountName, accountIdentifier, networkId}. Returns {data: {id, bankInfo?}} — bankInfo only for a bank collection. The post-response script stores {{receive_id}}.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"amountIn\": \"{{receive_amount_in}}\",\n  \"currencyIn\": \"{{receive_currency}}\",\n  \"amountOut\": \"{{receive_amount_out}}\",\n  \"rate\": \"{{receive_rate}}\",\n  \"country\": \"{{receive_country}}\",\n  \"reference\": \"{{$randomUUID}}\",\n  \"memo\": \"{{$randomBsNoun}}\",\n  \"source\": {\n    \"accountName\": \"Ken Adams\",\n    \"accountIdentifier\": \"1111111111\",\n    \"networkId\": \"{{source_network_id}}\"\n  }\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
           "event": [
             {
               "listen": "test",
@@ -505,7 +511,38 @@
                 ]
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountIn\": \"{{receive_amount_in}}\",\n  \"currencyIn\": \"{{receive_currency}}\",\n  \"amountOut\": \"{{receive_amount_out}}\",\n  \"rate\": \"{{receive_rate}}\",\n  \"country\": \"{{receive_country}}\",\n  \"reference\": \"{{$randomUUID}}\",\n  \"memo\": \"{{$randomBsNoun}}\",\n  \"source\": {\n    \"accountName\": \"Ken Adams\",\n    \"accountIdentifier\": \"1111111111\",\n    \"networkId\": \"{{source_network_id}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/receive",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "receive"
+              ]
+            },
+            "description": "Create a receive (KYB + KYC required). amountIn / amountOut / rate come from the quote request; settles in USDC to the vault address (currencyOut ignored). source = {accountName, accountIdentifier, networkId}. Returns {data: {id, bankInfo?}} — bankInfo only for a bank collection. The post-response script stores {{receive_id}}."
+          },
+          "response": []
         },
         {
           "name": "get receive",
@@ -525,7 +562,8 @@
               ]
             },
             "description": "One receive of the tenant (type topup), in any status. 404 for any other id."
-          }
+          },
+          "response": []
         },
         {
           "name": "get receive status",
@@ -546,13 +584,14 @@
               ]
             },
             "description": "Only the receive's status: {data: {status}}. Poll until settled / failed / rejected / expired / cancelled, or use a PAYMENT_UPDATE webhook."
-          }
+          },
+          "response": []
         }
-      ]
+      ],
+      "description": "Receive funds from a third-party sender: quote → networks → verification → receive → get receive / status. Set receive_country / receive_currency / receive_channel first."
     },
     {
       "name": "send",
-      "description": "Send funds from your vault to a third-party receiver: balance → quote → networks → verification → send → get send / status. Set send_country / send_currency / send_channel first. A send moves real (sandbox) funds out of your vault.",
       "item": [
         {
           "name": "balance",
@@ -571,10 +610,22 @@
               ]
             },
             "description": "Step 1 of a send: your vault balance — what a send can pay out. Returns {data: {balance, currency}}, e.g. {balance: \"31.58\", currency: \"usd\"} (2 decimals)."
-          }
+          },
+          "response": []
         },
         {
           "name": "quote received",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Saves the quote's figures for the following request.\ntry {\n  const q = pm.response.json().data;\n  if (q) {\n    pm.collectionVariables.set(\"send_amount_in\", q.amountIn);\n    pm.collectionVariables.set(\"send_amount_out\", q.amountOut);\n    pm.collectionVariables.set(\"send_rate\", q.rate);\n    console.log(\"send quote:\", q.amountIn, q.currencyIn, \"->\", q.amountOut, q.currencyOut, \"@\", q.rate);\n  }\n} catch (e) {\n  console.log(\"Response is not JSON:\", e.message);\n}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -583,6 +634,15 @@
                 "value": "application/json"
               }
             ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountOut\": \"20000\",\n  \"currencyOut\": \"{{send_currency}}\",\n  \"country\": \"{{send_country}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{sandbox_url}}/api/merchant/quote",
               "host": [
@@ -594,42 +654,23 @@
                 "quote"
               ]
             },
-            "description": "Quote a send from the amount the receiver must get (amountOut, in send_currency): the quote returns the USD that leaves your vault (amountIn). The script saves amountIn / amountOut / rate for the send request.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"amountOut\": \"20000\",\n  \"currencyIn\": \"USD\",\n  \"currencyOut\": \"{{send_currency}}\",\n  \"country\": \"{{send_country}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "description": "Quote a send from the amount the receiver must get (amountOut, in send_currency): the quote returns the USD that leaves your vault (amountIn). The script saves amountIn / amountOut / rate for the send request."
           },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// Saves the quote's figures for the following request.",
-                  "try {",
-                  "  const q = pm.response.json().data;",
-                  "  if (q) {",
-                  "    pm.collectionVariables.set(\"send_amount_in\", q.amountIn);",
-                  "    pm.collectionVariables.set(\"send_amount_out\", q.amountOut);",
-                  "    pm.collectionVariables.set(\"send_rate\", q.rate);",
-                  "    console.log(\"send quote:\", q.amountIn, q.currencyIn, \"->\", q.amountOut, q.currencyOut, \"@\", q.rate);",
-                  "  }",
-                  "} catch (e) {",
-                  "  console.log(\"Response is not JSON:\", e.message);",
-                  "}"
-                ]
-              }
-            }
-          ]
+          "response": []
         },
         {
           "name": "quote sent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Saves the quote's figures for the following request.\ntry {\n  const q = pm.response.json().data;\n  if (q) {\n    pm.collectionVariables.set(\"send_amount_in\", q.amountIn);\n    pm.collectionVariables.set(\"send_amount_out\", q.amountOut);\n    pm.collectionVariables.set(\"send_rate\", q.rate);\n    console.log(\"send quote:\", q.amountIn, q.currencyIn, \"->\", q.amountOut, q.currencyOut, \"@\", q.rate);\n  }\n} catch (e) {\n  console.log(\"Response is not JSON:\", e.message);\n}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -638,6 +679,15 @@
                 "value": "application/json"
               }
             ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountIn\": \"10\",\n  \"currencyOut\": \"{{send_currency}}\",\n  \"country\": \"{{send_country}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{sandbox_url}}/api/merchant/quote",
               "host": [
@@ -649,31 +699,26 @@
                 "quote"
               ]
             },
-            "description": "Quote a send from the USD you send (amountIn): the quote returns what the receiver gets (amountOut, in send_currency). The script saves amountIn / amountOut / rate for the send request — run either this or quote received.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"amountIn\": \"10\",\n  \"currencyIn\": \"USD\",\n  \"currencyOut\": \"{{send_currency}}\",\n  \"country\": \"{{send_country}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "description": "Quote a send from the USD you send (amountIn): the quote returns what the receiver gets (amountOut, in send_currency). The script saves amountIn / amountOut / rate for the send request — run either this or quote received."
           },
+          "response": []
+        },
+        {
+          "name": "networks",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// Saves the quote's figures for the following request.",
+                  "// Saves the first network of send_channel as the send destination network.",
                   "try {",
-                  "  const q = pm.response.json().data;",
-                  "  if (q) {",
-                  "    pm.collectionVariables.set(\"send_amount_in\", q.amountIn);",
-                  "    pm.collectionVariables.set(\"send_amount_out\", q.amountOut);",
-                  "    pm.collectionVariables.set(\"send_rate\", q.rate);",
-                  "    console.log(\"send quote:\", q.amountIn, q.currencyIn, \"->\", q.amountOut, q.currencyOut, \"@\", q.rate);",
+                  "  const list = pm.response.json().data || [];",
+                  "  const channel = pm.collectionVariables.get(\"send_channel\") || \"bank\";",
+                  "  const pick = list.find((n) => n.channel === channel && n.networkId) || list.find((n) => n.networkId);",
+                  "  if (pick) {",
+                  "    pm.collectionVariables.set(\"destination_network_id\", pick.networkId);",
+                  "    console.log(\"destination_network_id:\", pick.networkId, pick.name, pick.channel);",
                   "  }",
                   "} catch (e) {",
                   "  console.log(\"Response is not JSON:\", e.message);",
@@ -681,10 +726,7 @@
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "networks",
+          ],
           "request": {
             "method": "GET",
             "header": [],
@@ -708,28 +750,7 @@
             },
             "description": "The banks and mobile-money networks a send can pay out to (note ?side=send). The script saves the first network of send_channel as destination_network_id."
           },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// Saves the first network of send_channel as the send destination network.",
-                  "try {",
-                  "  const list = pm.response.json().data || [];",
-                  "  const channel = pm.collectionVariables.get(\"send_channel\") || \"bank\";",
-                  "  const pick = list.find((n) => n.channel === channel && n.networkId) || list.find((n) => n.networkId);",
-                  "  if (pick) {",
-                  "    pm.collectionVariables.set(\"destination_network_id\", pick.networkId);",
-                  "    console.log(\"destination_network_id:\", pick.networkId, pick.name, pick.channel);",
-                  "  }",
-                  "} catch (e) {",
-                  "  console.log(\"Response is not JSON:\", e.message);",
-                  "}"
-                ]
-              }
-            }
-          ]
+          "response": []
         },
         {
           "name": "verification",
@@ -741,6 +762,15 @@
                 "value": "application/json"
               }
             ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountIdentifier\": \"1111111111\",\n  \"networkId\": \"{{destination_network_id}}\",\n  \"country\": \"{{send_country}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{sandbox_url}}/api/merchant/verification?side=send",
               "host": [
@@ -758,50 +788,12 @@
                 }
               ]
             },
-            "description": "Checks the receiver's account on destination_network_id and returns the holder's name when known (note ?side=send). In the sandbox, 1111111111 always verifies.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"accountIdentifier\": \"1111111111\",\n  \"networkId\": \"{{destination_network_id}}\",\n  \"country\": \"{{send_country}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
+            "description": "Checks the receiver's account on destination_network_id and returns the holder's name when known (note ?side=send). In the sandbox, 1111111111 always verifies."
+          },
+          "response": []
         },
         {
           "name": "send",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{sandbox_url}}/api/merchant/send",
-              "host": [
-                "{{sandbox_url}}"
-              ],
-              "path": [
-                "api",
-                "merchant",
-                "send"
-              ]
-            },
-            "description": "Creates the send (KYB + KYC required). amountIn / amountOut / rate come from a quote request; amountIn must not exceed your balance (402 PAY_402_INSUFFICIENT_FUNDS otherwise). destination = {accountName, accountIdentifier, networkId}. Returns {data: {id, reference, status}}; the script saves send_id.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"amountIn\": \"{{send_amount_in}}\",\n  \"currencyIn\": \"USD\",\n  \"amountOut\": \"{{send_amount_out}}\",\n  \"currencyOut\": \"{{send_currency}}\",\n  \"rate\": \"{{send_rate}}\",\n  \"country\": \"{{send_country}}\",\n  \"reference\": \"snd-{{$timestamp}}\",\n  \"memo\": \"Payout {{$timestamp}}\",\n  \"destination\": {\n    \"accountName\": \"Ken Adams\",\n    \"accountIdentifier\": \"1111111111\",\n    \"networkId\": \"{{destination_network_id}}\"\n  }\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
           "event": [
             {
               "listen": "test",
@@ -821,7 +813,38 @@
                 ]
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountIn\": \"{{send_amount_in}}\",\n  \"currencyIn\": \"USD\",\n  \"amountOut\": \"{{send_amount_out}}\",\n  \"currencyOut\": \"{{send_currency}}\",\n  \"rate\": \"{{send_rate}}\",\n  \"country\": \"{{send_country}}\",\n  \"reference\": \"snd-{{$timestamp}}\",\n  \"memo\": \"Payout {{$timestamp}}\",\n  \"destination\": {\n    \"accountName\": \"Ken Adams\",\n    \"accountIdentifier\": \"1111111111\",\n    \"networkId\": \"{{destination_network_id}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/send",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "send"
+              ]
+            },
+            "description": "Creates the send (KYB + KYC required). amountIn / amountOut / rate come from a quote request; amountIn must not exceed your balance (402 PAY_402_INSUFFICIENT_FUNDS otherwise). destination = {accountName, accountIdentifier, networkId}. Returns {data: {id, reference, status}}; the script saves send_id."
+          },
+          "response": []
         },
         {
           "name": "get send",
@@ -841,7 +864,8 @@
               ]
             },
             "description": "The send, in any status: amounts, receiver (payerName), reference, timestamps."
-          }
+          },
+          "response": []
         },
         {
           "name": "get send status",
@@ -862,46 +886,17 @@
               ]
             },
             "description": "Only the send's status: {data: {status}}. Poll until settled / failed / rejected / expired / cancelled, or use a PAYMENT_UPDATE webhook."
-          }
+          },
+          "response": []
         }
-      ]
+      ],
+      "description": "Send funds from your vault to a third-party receiver: balance → quote → networks → verification → send → get send / status. Set send_country / send_currency / send_channel first. A send moves real (sandbox) funds out of your vault."
     },
     {
       "name": "webhooks",
-      "description": "Webhook subscriptions. Deliveries are {topic, tenantId, data}, signed with your apiSecret in X-Blinx-Signature: t=<ts>,v1=hex HMAC-SHA256(\"<ts>.<raw body>\"); answer 202 Accepted.",
       "item": [
         {
           "name": "create webhook",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{sandbox_url}}/api/merchant/webhooks",
-              "host": [
-                "{{sandbox_url}}"
-              ],
-              "path": [
-                "api",
-                "merchant",
-                "webhooks"
-              ]
-            },
-            "description": "Register an https endpoint for topics (PAYMENT_UPDATE covers payment and receive status changes). The post-response script stores {{webhook_id}}.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"uri\": \"https://merchant.example.com/blinx/webhooks\",\n  \"topics\": [\n    \"PAYMENT_UPDATE\"\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
           "event": [
             {
               "listen": "test",
@@ -922,7 +917,38 @@
                 ]
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uri\": \"https://merchant.example.com/blinx/webhooks\",\n  \"topics\": [\n    \"PAYMENT_UPDATE\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/webhooks",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "webhooks"
+              ]
+            },
+            "description": "Register an https endpoint for topics (PAYMENT_UPDATE covers payment and receive status changes). The post-response script stores {{webhook_id}}."
+          },
+          "response": []
         },
         {
           "name": "get webhooks",
@@ -941,7 +967,8 @@
               ]
             },
             "description": "The tenant's webhook subscriptions."
-          }
+          },
+          "response": []
         },
         {
           "name": "update webhook",
@@ -953,6 +980,15 @@
                 "value": "application/json"
               }
             ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "url": {
               "raw": "{{sandbox_url}}/api/merchant/webhooks/{{webhook_id}}",
               "host": [
@@ -965,19 +1001,12 @@
                 "{{webhook_id}}"
               ]
             },
-            "description": "Change a subscription's topics and/or active flag (the uri is immutable).",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"active\": false\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
+            "description": "Change a subscription's topics and/or active flag (the uri is immutable)."
+          },
+          "response": []
         }
-      ]
+      ],
+      "description": "Webhook subscriptions. Deliveries are {topic, tenantId, data}, signed with your apiSecret in X-Blinx-Signature: t=<ts>,v1=hex HMAC-SHA256(\"<ts>.<raw body>\"); answer 202 Accepted."
     },
     {
       "name": "data",
@@ -1000,7 +1029,8 @@
               ]
             },
             "description": "Reference data for a country: currency, dialling info, travel-rule threshold and fields, payment limits per channel."
-          }
+          },
+          "response": []
         }
       ]
     }
@@ -1127,88 +1157,71 @@
     },
     {
       "key": "receive_country",
-      "value": "NG",
-      "type": "string"
+      "value": "NG"
     },
     {
       "key": "receive_currency",
-      "value": "NGN",
-      "type": "string"
+      "value": "NGN"
     },
     {
       "key": "receive_channel",
-      "value": "bank",
-      "type": "string"
+      "value": "bank"
     },
     {
       "key": "source_network_id",
-      "value": "",
-      "type": "string"
+      "value": ""
     },
     {
       "key": "receive_id",
-      "value": "",
-      "type": "string"
+      "value": ""
     },
     {
       "key": "webhook_id",
-      "value": "",
-      "type": "string"
+      "value": ""
     },
     {
       "key": "receive_amount_in",
-      "value": "",
-      "type": "string"
+      "value": ""
     },
     {
       "key": "receive_amount_out",
-      "value": "",
-      "type": "string"
+      "value": ""
     },
     {
       "key": "receive_rate",
-      "value": "",
-      "type": "string"
+      "value": ""
     },
     {
       "key": "send_country",
-      "value": "NG",
-      "type": "string"
+      "value": "NG"
     },
     {
       "key": "send_currency",
-      "value": "NGN",
-      "type": "string"
+      "value": "NGN"
     },
     {
       "key": "send_channel",
-      "value": "bank",
-      "type": "string"
+      "value": "bank"
     },
     {
       "key": "destination_network_id",
-      "value": "",
-      "type": "string"
+      "value": ""
     },
     {
       "key": "send_amount_in",
-      "value": "",
-      "type": "string"
+      "value": ""
     },
     {
       "key": "send_amount_out",
-      "value": "",
-      "type": "string"
+      "value": ""
     },
     {
       "key": "send_rate",
-      "value": "",
-      "type": "string"
+      "value": ""
     },
     {
       "key": "send_id",
-      "value": "",
-      "type": "string"
+      "value": ""
     }
   ]
 }
