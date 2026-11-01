@@ -47,7 +47,7 @@ All endpoints are under `/api/merchant` and require the standard apiKey + apiSec
 
 | Method & path                                 | Purpose                                                              |
 | --------------------------------------------- | -------------------------------------------------------------------- |
-| `POST /api/merchant/quote`                    | Best quote across providers for a currency pair and amount           |
+| `POST /api/merchant/quote`                    | Best available quote for a currency pair and amount                  |
 | `POST /api/merchant/payments`                 | Create a payment; returns the hosted `redirectUrl`                   |
 | `GET /api/merchant/payments/{id}`             | Get one payment, in any status                                       |
 | `GET /api/merchant/payments/{id}/status`      | Get only the payment's `status` (lightweight polling)                |
@@ -56,7 +56,7 @@ All endpoints are under `/api/merchant` and require the standard apiKey + apiSec
 
 #### How quotes work
 
-Every payment converts the payer's **fiat** into your **token** through a payout **provider**. Several providers can serve the same corridor at different prices, so Blinx asks all of them and keeps the best one.
+Every payment converts the payer's **fiat** into your **token** through a payout **provider**. The same corridor can be served at different prices, so Blinx compares the available quotes and keeps the best one.
 
 ```
                  QuoteRequest { amountIn | amountOut, currencyIn, currencyOut, country }
@@ -72,22 +72,20 @@ Every payment converts the payer's **fiat** into your **token** through a payout
                  validate: country/currency match, amount > 0, supported token
                                        │
                                        ▼
-           token not USDC (USDT, EURe)? ──yes──► quote the providers in USDC,
+           token not USDC (USDT, EURe)? ──yes──► quote in USDC,
                                        │         bridge with a swap quote
                                        ▼
-          ┌────────────────────┬───────┴───────────┬────────────────────┐
-          ▼                    ▼                   ▼                    ▼
-     Provider "1"         Provider "2"            ...          (only `providers`                         
-     amountOut, fee       amountOut, fee                        if you pass it)
-          └────────────────────┴───────┬───────────┴────────────────────┘
+                 collect every available quote for the corridor
+                            (amountOut and fee for each)
+                                       │
                                        ▼
-                      pick the highest amountOut  ──► providerId
+                      pick the highest amountOut
                                        │
                          none succeeded? ──► 400 PAY_AMOUNT_OUT_OF_RANGE /
                                        │      400 PAY_LOW_AMOUNT /
                                        │      503 PAY_FAILED_QUOTE
                                        ▼
-          QuoteResponse { amountIn, amountOut, rate, localFee, providerId, ttl }
+          QuoteResponse { amountIn, amountOut, rate, localFee, ttl }
                      (cached for ttl seconds — default 1800)
 ```
 
@@ -95,13 +93,14 @@ What this means for a **payment**:
 
 ```
 POST /quote   ── indicative ──► shows you price, fee and limits; binds nothing
-POST /payments ─────────────► checks the amount with the providers' OWN quotes;
-                               exactly one can serve it? → stores that providerId
+POST /payments ─────────────► checks the amount against live quotes;
+                               exactly one route can serve it? → fixed on the payment
+                               several can? → the payer's pick decides at confirm
                                │
                                └─ no provider can serve it? the create fails
                                     with the quote's error (400 / 503); nothing
                                     is stored
-PUT  (payer confirms) ───────► provider stored? use it
+PUT  (payer confirms) ───────► route fixed at creation? use it
                                otherwise take a fresh best quote now;
                                if that fails the confirm fails, the payment
                                stays confirmable and the payer can retry
@@ -146,12 +145,12 @@ For a payment, `currencyIn` is the `fiat` the payer pays and `currencyOut` is yo
     "currencyIn": "NGN", "currencyOut": "USD",
     "amountIn": "5000.00", "amountOut": "3.66",
     "rate": "1344.22", "localFee": "75.00",
-    "providerId": "2", "side": "receive", "ttl": 1800 } }
+    "side": "receive", "ttl": 1800 } }
 ```
 
 Tokens come back by their fiat denomination (`USDC` → `USD`), with the derived `side`.
 
-Optional body fields: `channel` (`bank` | `momo`) and `providers` (e.g. `["2"]`) to restrict which providers compete.
+Optional body field: `channel` (`bank` | `momo`).
 
 **2. Create the payment**
 
@@ -206,7 +205,7 @@ The body is a `PaymentRequest`:
 * **Give the payer the `redirectUrl`.** They complete the payment there; the payment starts at status `created`. The URL's last path segment is the payer `code`, not the `id`.
 * **Capture the `id`** returned alongside `redirectUrl` and `code` — it's the payment id you poll with in step 3. `validUntil` is when the payment expires.
 * A request that fails validation → `400 PAY_INVALID_QUOTE_REQUEST`, with an `errors` **array** of `{ field, value, message }` entries (every failing field reported at once): a non-positive `amount`, a `fiat` that does not match `country`, an unsupported `token`, an invalid `type`/`validUntil`, a missing/unsafe `reference`/`purpose`, or malformed `items`.
-* The `amount` is checked against the payout providers' own quotes, with the same errors as the quote (no `errors` array): an amount no provider serves → `400 PAY_AMOUNT_OUT_OF_RANGE` (the message carries the bounds); one whose payout rounds to `0` after fees → `400 PAY_LOW_AMOUNT`; no provider able to quote right now → `503 PAY_FAILED_QUOTE` (retry later). As a guide use the **country-wide envelope**: the top-level `payments.min` / `payments.max` from `GET /api/merchant/data/{country}` (or `GET /api/merchant/payments/limits/{country}`), **not** the per-channel `payments.bank` / `payments.momo` bounds.
+* The `amount` is checked against live payout quotes, with the same errors as the quote (no `errors` array): an amount no provider serves → `400 PAY_AMOUNT_OUT_OF_RANGE` (the message carries the bounds); one whose payout rounds to `0` after fees → `400 PAY_LOW_AMOUNT`; no provider able to quote right now → `503 PAY_FAILED_QUOTE` (retry later). As a guide use the **country-wide envelope**: the top-level `payments.min` / `payments.max` from `GET /api/merchant/data/{country}` (or `GET /api/merchant/payments/limits/{country}`), **not** the per-channel `payments.bank` / `payments.momo` bounds.
 * An unsupported `country`/`fiat` → `400 PAY_COUNTRY_NOT_SUPPORTED` (here `errors` is a single `{ field, value }` object, not an array).
 * Reusing a `reference` that still belongs to a live or settled payment → `409 DB_409_DUPLICATE_ENTRY`. A reference frees up only once its payment reaches a failed terminal state (`expired`/`rejected`/`failed`/`cancelled`).
 

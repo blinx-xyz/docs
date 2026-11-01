@@ -27,7 +27,7 @@ This documentation covers everything a merchant (tenant) integration needs:
 | Sandbox base URL, API key & secret, first call | Set up the sandbox                 |
 | Endpoints, schemas, error shapes               | `blinx-openapi.yaml`     |
 | Country reference data (limits, travel rule)   | Get country data                   |
-| Quotes (best price across providers)           | Create a Payment → How quotes work |
+| Quotes (best available price)                  | Create a Payment → How quotes work |
 | Creating & checking payments, line items       | Create a Payment                   |
 | Signing requests in code (CLI)                 | Sign a payment request             |
 | Signing requests in Postman                    | Postman pre-request script         |

@@ -23,7 +23,7 @@ Everything in this documentation runs against the **sandbox** — no real transa
 
 Your tenant also carries an **Environments** field (visible on the dashboard). It must include the sandbox environment — Blinx sets it when your tenant is provisioned. Ask for it if your tenant only shows production.
 
-> **Sandbox rules.** Providers run in sandbox mode: payouts are simulated, no live provider is contacted, and no money moves. See Sandbox behaviour for the test values the sandbox expects.
+> **Sandbox rules.** Payouts are simulated, no live provider is contacted, and no money moves. See Sandbox behaviour for the test values the sandbox expects.
 
 ***
 
@@ -123,7 +123,7 @@ Prefer Postman? The ready-made `Blinx Merchant API` collection has a pre-request
 #### Sandbox behaviour
 
 * **Payout test numbers** — on the hosted payment page, account identifier `1111111111` drives the sandbox to a **settled** payment; `0000000000` drives it to **failed**.
-* **Simulated providers** — swaps, exchange orders, and payouts advance through canned status sequences rather than real provider calls.
+* **Simulated payouts** — swaps, exchange orders, and payouts advance through canned status sequences rather than real provider calls.
 * **Hosted payment page** — every created payment returns a `redirectUrl` on the sandbox domain; the payer completes the payment there.
 
 Full end-to-end walkthrough: Test the Blinx system with Postman.

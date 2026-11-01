@@ -13,8 +13,8 @@ The Users subpage lists the people who use this tenant — *the people who use t
 | **Email** | The user's email address |
 | **Chain** | The network their account is on (e.g. Sepolia) |
 | **Country** | Their country |
-| **Didit state** | Their identity-verification state — e.g. a green **Approved · KYC**, or **Pending · KYC** |
+| **Verification state** | Their identity-verification state — e.g. a green **Approved · KYC**, or **Pending · KYC** |
 
-The **Email**, **Country** and **Didit state** headers carry funnel filters, and the list is paged (shown as "Users 1–N of N").
+The **Email**, **Country** and **Verification state** headers carry funnel filters, and the list is paged (shown as "Users 1–N of N").
 
 > At least one **KYC-approved** user is part of your tenant's [business readiness](settings-general.md) — it is required before you can collect or pay out.

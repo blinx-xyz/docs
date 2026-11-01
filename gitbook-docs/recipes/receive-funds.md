@@ -83,7 +83,7 @@ const quote = await blinx('POST', '/api/merchant/quote', {
   country: 'NG',
 });
 // { currencyIn: 'NGN', currencyOut: 'USD', amountIn: '13509.75', amountOut: '10.00',
-//   rate: '1344.22', localFee: '67.55', providerId: '2', side: 'receive', ttl: 1800 }
+//   rate: '1344.22', localFee: '67.55', side: 'receive', ttl: 1800 }
 // → the sender sends 13,509.75 NGN
 ```
 
@@ -104,7 +104,7 @@ const quote = await blinx('POST', '/api/merchant/quote', {
   country: 'NG',
 });
 // { currencyIn: 'NGN', currencyOut: 'USD', amountIn: '5000.00', amountOut: '3.66',
-//   rate: '1344.22', localFee: '25.00', providerId: '2', side: 'receive', ttl: 1800 }
+//   rate: '1344.22', localFee: '25.00', side: 'receive', ttl: 1800 }
 // → you receive 3.66 USD
 ```
 
@@ -126,8 +126,8 @@ The networks a sender in a country can pay from:
 
 ```js
 const networks = await blinx('GET', '/api/merchant/network/NG');
-// [ { networkId: '5f1af11b-…', name: 'Access Bank', channel: 'bank', providers: ['2'], country: 'NG' },
-//   { networkId: '30f11b2e-…', name: 'MTN',         channel: 'momo', providers: ['2'], country: 'NG' }, … ]
+// [ { networkId: '5f1af11b-…', name: 'Access Bank', channel: 'bank', country: 'NG' },
+//   { networkId: '30f11b2e-…', name: 'MTN',         channel: 'momo', country: 'NG' }, … ]
 
 const network = networks.find((n) => n.channel === 'bank' && n.name === 'Access Bank');
 ```
@@ -208,7 +208,6 @@ The body is a `ReceiveRequest`:
 | `country`    | no       | The sender's country. Defaults to your merchant user's country.                                   |
 | `reference`  | no       | Your unique reference; generated when omitted. Reusing a live one → `409 DB_409_DUPLICATE_ENTRY`.  |
 | `memo`       | no       | Free text kept on the receive.                                                                    |
-| `providerId` | no       | Pin a provider (`"1"` Paycrest, `"2"` YellowCard); otherwise the quote's provider is used.        |
 
 * The receive always settles in **USDC** to your vault address — a `currencyOut` in the body is ignored.
 * Every invalid field is reported at once: `400 PAY_400_INVALID_REQUEST` with an `errors` array (e.g. `source.networkId`, `source.accountIdentifier`).
