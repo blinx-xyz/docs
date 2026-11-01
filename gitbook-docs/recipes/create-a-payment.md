@@ -140,8 +140,8 @@ For a payment, `currencyIn` is the `fiat` the payer pays and `currencyOut` is yo
 ```json
 { "data": {
     "currencyIn": "NGN", "currencyOut": "USD",
-    "amountIn": "5000.00", "amountOut": "3.02",
-    "rate": "1650.00", "localFee": "25.00",
+    "amountIn": "5000.00", "amountOut": "3.66",
+    "rate": "1344.22", "localFee": "75.00",
     "providerId": "2", "side": "receive", "ttl": 1800 } }
 ```
 
@@ -193,10 +193,10 @@ The body is a `PaymentRequest`:
 
 ```json
 { "data": {
-    "redirectUrl": "https://app.blinx.example/payment/foam-bark-95162",
-    "validUntil": "2026-08-01T00:00:00.000Z",
-    "code": "foam-bark-95162",
-    "id": "7b2c1e90-…" } }
+    "redirectUrl": "https://app.blinx.example/payment/sky-gale-11024",
+    "validUntil": "2026-11-02T14:52:29.409Z",
+    "code": "sky-gale-11024",
+    "id": "a0cf3e84-be3f-468c-84a8-45dd62ada6ee" } }
 ```
 
 * **Give the payer the `redirectUrl`.** They complete the payment there; the payment starts at status `created`. The URL's last path segment is the payer `code`, not the `id`.
@@ -211,51 +211,54 @@ The body is a `PaymentRequest`:
 Create hands you the payment `id`, but the outcome arrives later. For polling, read just the status:
 
 ```bash
-curl http://localhost:3001/api/merchant/payments/7b2c1e90-…/status \
+curl http://localhost:3001/api/merchant/payments/a0cf3e84-be3f-468c-84a8-45dd62ada6ee/status \
   -H "x-api-key: $KEY" -H "x-timestamp: $TS" -H "x-signature: $SIG"
-# → { "data": { "status": "processing" } }
+# → { "data": { "status": "created" } }
 ```
 
 Or read the full `Payment`:
 
 ```bash
-curl http://localhost:3001/api/merchant/payments/7b2c1e90-… \
+curl http://localhost:3001/api/merchant/payments/a0cf3e84-be3f-468c-84a8-45dd62ada6ee \
   -H "x-api-key: $KEY" -H "x-timestamp: $TS" -H "x-signature: $SIG"
 ```
 
-`200`, with the payment wrapped in `data`:
+`200`, with the payment wrapped in `data` — here right after creation:
 
 ```json
 {
   "data": {
-    "id": "7b2c1e90-…",
-    "status": "processing",
-    "type": "payment",
-    "amount": "5000",
-    "currencyIn": "NGN",
-    "currencyOut": "USDC",
-    "fees": "25",
-    "country": "NG",
+    "id": "a0cf3e84-be3f-468c-84a8-45dd62ada6ee",
     "reference": "abc",
     "purpose": "seize global content",
-    "paymentType": "bank",
-    "payerName": "Ada Lovelace",
+    "status": "created",
+    "type": "payment",
+    "amount": "5000.00",
+    "currencyIn": "NGN",
+    "amountUsd": "3.66",
+    "currencyOut": "USDC",
+    "country": "NG",
     "tenant": "Acme",
     "seller": "seller@example.com",
-    "destinationAddress": "0x8439cca53a7f7bcfa3bad61a73e8eceae12d1589",
-    "destinationNetwork": "arbitrum",
     "items": [
-      { "name": "Annual subscription", "description": "Global content plan, 12 months", "price": "4000", "units": "1" },
-      { "name": "Setup fee", "price": "1000", "units": "1" }
+      { "name": "Setup fee", "units": "1", "price": "1000" },
+      { "name": "Annual subscription", "units": "1", "description": "Global content plan, 12 months", "price": "4000" }
     ],
-    "createdAt": "2026-07-27T10:15:00.000Z",
-    "updatedAt": "2026-07-27T10:21:40.000Z"
+    "createdAt": "2026-11-01T13:52:29.417Z",
+    "updatedAt": "2026-11-01T13:52:29.417Z"
   }
 }
 ```
 
+Once the payer has confirmed, the payment also carries `fees` and the payer's `paymentType` / `payerName`, and `status` moves on (e.g. `processing`):
+
+```
+{ "data": { …, "status": "processing", …, "fees": "0.04", …, "paymentType": "bank", "payerName": "Ken Adams", … } }
+```
+
 * Poll until `status` reaches a terminal value — `settled` (paid) or `failed` / `rejected` / `expired` / `cancelled` (not paid). Everything else is in-flight; keep waiting. When a payment fails or expires, `failure` carries the reason.
-* `items` echoes the line items sent on create (absent when the payment has none). The list endpoint does not include them.
+* `amount` is the fiat the payer pays (`currencyIn`); `amountUsd` is what the payment settles, in `currencyOut` — your `amountUsd` when you created it with one, otherwise the quote's.
+* `items` echoes the line items sent on create (absent when the payment has none) — not necessarily in the order you sent them. The list endpoint does not include them.
 * `paymentType` / `payerName` appear once the payer has confirmed (they describe the payer's bank or mobile-money account).
 * A payment not owned by the caller's tenant → `404 PAY_404_NOT_FOUND`. The same 404 covers unknown ids: existence is never disclosed.
 * **Null/unknown fields are omitted, not sent as `null`.** Fields like `amountUsd`, `failure` or `cancelledAt` are simply absent until they have a value — read a missing key as "not set".
@@ -274,7 +277,11 @@ curl 'http://localhost:3001/api/merchant/payments?format=csv' \
   -H "x-api-key: $KEY" -H "x-timestamp: $TS" -H "x-signature: $SIG"
 ```
 
-Rows have the same flat shape as the single-payment read. The list also includes your vault top-ups — filter on `type` (`payment` | `topup`). Payments still `created`/`viewed` past their `validUntil` are moved to `expired` as the list is read. `?format=csv` returns the same rows as an RFC 4180 CSV file (`text/csv`, `Content-Disposition: attachment`). See the OpenAPI `PaymentSummary` schema for the exact columns.
+Rows have the same flat shape as the single-payment read. The list also includes your vault top-ups — filter on `type` (`payment` | `topup`). Payments still `created`/`viewed` past their `validUntil` are moved to `expired` as the list is read. `?format=csv` returns the same rows as an RFC 4180 CSV file (`text/csv`, `Content-Disposition: attachment`), with these columns (empty when unset):
+
+```
+id,reference,purpose,status,type,failure,amount,currencyIn,amountUsd,currencyOut,fees,country,paymentType,payerName,tenant,seller,items,createdAt,cancelledAt,updatedAt
+```
 
 #### Errors
 
