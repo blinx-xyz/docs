@@ -171,7 +171,7 @@ The body is a `PaymentRequest`:
 | `purpose`    | yes      | Description shown to the payer.                                                                                           |
 | `type`       | no       | Payment category (see Concepts). Defaults to `other`.                                                                     |
 | `validUntil` | no       | Future ISO 8601 expiry. Defaults to 24 hours after creation.                                                              |
-| `network`    | no       | Settlement network; your vault must hold an active `{token}_{network}` address. Defaults to your vault's default address. |
+| `network`    | no       | Usually omitted: the payment settles to your vault address (its network and token are set at onboarding). If sent, `{token}_{network}` must match that address. |
 | `items`      | no       | Line items shown to the payer — see below.                                                                                |
 
 **Line items**

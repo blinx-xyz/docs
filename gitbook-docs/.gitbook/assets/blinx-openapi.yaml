@@ -1128,9 +1128,10 @@ components:
         network:
           type: string
           description: >
-            Optional settlement network. When set, your vault must hold an
-            active address for `{token}_{network}`, otherwise the field fails
-            validation. When omitted, your vault's default address is used.
+            Optional. A payment always settles to your vault address (one per
+            tenant, with one network and token set at onboarding). When sent,
+            `{token}_{network}` must match that address, otherwise the request
+            fails validation (`destination` field error). Usually omitted.
           example: arbitrum
         items:
           type: array
