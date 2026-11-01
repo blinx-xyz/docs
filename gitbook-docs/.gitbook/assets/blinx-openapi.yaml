@@ -258,29 +258,44 @@ paths:
                       $ref: '#/components/schemas/PaymentSummary'
               example:
                 data:
-                  - id: ba0ffe1c-85dc-4d10-a0c3-7363a1441e1c
-                    status: created
-                    type: payment
-                    amount: "1"
-                    currencyIn: NGN
-                    currencyOut: USDC
-                    country: NG
+                  - id: a0cf3e84-be3f-468c-84a8-45dd62ada6ee
                     reference: abc
                     purpose: seize global content
-                    paymentType: bank
-                    payerName: Ada Lovelace
+                    status: created
+                    type: payment
+                    amount: "5000.00"
+                    currencyIn: NGN
+                    amountUsd: "3.66"
+                    currencyOut: USDC
+                    country: NG
+                    tenant: Acme
                     seller: seller@example.com
-                    destinationAddress: "0x8439cca53a7f7bcfa3bad61a73e8eceae12d1589"
-                    destinationNetwork: arbitrum
-                    createdAt: "2026-07-31T06:06:39.828Z"
-                    updatedAt: "2026-07-31T06:06:39.828Z"
+                    createdAt: "2026-11-01T13:52:29.417Z"
+                    updatedAt: "2026-11-01T13:52:29.417Z"
+                  - id: c83ab522-94a2-483a-9927-b8c393a38782
+                    reference: inv-0001
+                    status: processing
+                    type: topup
+                    amount: "5000.00"
+                    currencyIn: NGN
+                    amountUsd: "3.53"
+                    currencyOut: USDC
+                    fees: "0.04"
+                    country: NG
+                    paymentType: bank
+                    payerName: Ken Adams
+                    tenant: Acme
+                    seller: seller@example.com
+                    createdAt: "2026-11-01T12:38:54.434Z"
+                    updatedAt: "2026-11-01T12:39:08.904Z"
             text/csv:
               schema:
                 type: string
                 format: binary
               example: |
-                id,status,type,failure,amount,currencyIn,amountUsd,currencyOut,fees,country,reference,purpose,paymentType,payerName,tenant,seller,destinationAddress,destinationNetwork,items,createdAt,cancelledAt,updatedAt
-                ba0ffe1c-85dc-4d10-a0c3-7363a1441e1c,created,payment,,1,NGN,,USDC,,NG,abc,seize global content,bank,Ada Lovelace,Acme,seller@example.com,0x8439cca53a7f7bcfa3bad61a73e8eceae12d1589,arbitrum,,2026-07-31T06:06:39.828Z,,2026-07-31T06:06:39.828Z
+                id,reference,purpose,status,type,failure,amount,currencyIn,amountUsd,currencyOut,fees,country,paymentType,payerName,tenant,seller,items,createdAt,cancelledAt,updatedAt
+                a0cf3e84-be3f-468c-84a8-45dd62ada6ee,abc,seize global content,created,payment,,5000.00,NGN,3.66,USDC,,NG,,,Acme,seller@example.com,,2026-11-01T13:52:29.417Z,,2026-11-01T13:52:29.417Z
+                c83ab522-94a2-483a-9927-b8c393a38782,inv-0001,,processing,topup,,5000.00,NGN,3.53,USDC,0.04,NG,bank,Ken Adams,Acme,seller@example.com,,2026-11-01T12:38:54.434Z,,2026-11-01T12:39:08.904Z
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -1327,32 +1342,31 @@ components:
       allOf:
         - $ref: '#/components/schemas/PaymentSummary'
       example:
-        id: 7b2c1e90-1f0a-4a2e-9a0d-2c3b4d5e6f70
-        status: processing
-        type: payment
-        amount: "5000"
-        currencyIn: NGN
-        currencyOut: USDC
-        fees: "25"
-        country: NG
+        id: a0cf3e84-be3f-468c-84a8-45dd62ada6ee
         reference: abc
         purpose: seize global content
+        status: processing
+        type: payment
+        amount: "5000.00"
+        currencyIn: NGN
+        amountUsd: "3.66"
+        currencyOut: USDC
+        fees: "0.04"
+        country: NG
         paymentType: bank
-        payerName: Ada Lovelace
+        payerName: Ken Adams
         tenant: Acme
         seller: seller@example.com
-        destinationAddress: "0x8439cca53a7f7bcfa3bad61a73e8eceae12d1589"
-        destinationNetwork: arbitrum
         items:
+          - name: Setup fee
+            units: "1"
+            price: "1000"
           - name: Annual subscription
+            units: "1"
             description: Global content plan, 12 months
             price: "4000"
-            units: "1"
-          - name: Setup fee
-            price: "1000"
-            units: "1"
-        createdAt: "2026-07-27T10:15:00.000Z"
-        updatedAt: "2026-07-27T10:21:40.000Z"
+        createdAt: "2026-11-01T13:52:29.417Z"
+        updatedAt: "2026-11-01T13:58:02.110Z"
 
     PaymentSummary:
       type: object
@@ -1366,63 +1380,60 @@ components:
         id:
           type: string
           format: uuid
+        reference:
+          type: string
+          description: Your reference.
+        purpose:
+          type: string
+          description: Maps from the transfer memo; omitted when absent.
         status:
           $ref: '#/components/schemas/PaymentStatus'
         type:
           type: string
           enum: [payment, topup]
-          description: Row kind — a merchant `payment` or a vault `topup`.
+          description: Row kind — a merchant `payment` (payment link) or a `topup` (a receive).
         failure:
           type: string
           description: Reason of the last failure or expiry; omitted when none.
         amount:
           type: string
-          description: Payment amount, denominated in `currencyIn`.
+          description: The fiat amount the payer pays, in `currencyIn` (two decimals).
         currencyIn:
           type: string
-          description: Source currency the payer pays.
+          description: The fiat the payer pays in.
         amountUsd:
           type: string
-          description: USD-denominated amount when known; omitted otherwise.
+          description: >
+            What the payment settles, in `currencyOut` — your `amountUsd` when the
+            payment was created with one, otherwise the quote's.
         currencyOut:
           type: string
-          description: Settlement (destination) currency the merchant receives.
+          description: The settlement token you receive.
         fees:
           type: string
-          description: Fees applied to the payment; omitted when not set.
+          description: Fees applied; omitted until the payer has confirmed.
         country:
           type: string
-        reference:
-          type: string
-        purpose:
-          type: string
-          description: Maps from the transfer memo; omitted when absent.
         paymentType:
           type: string
           description: >
-            Payer account type (`bank`, `momo` or `crypto`). Omitted when the
-            payment has no recorded payer yet.
+            Payer account type (`bank`, `momo` or `crypto`). Omitted until the
+            payer has confirmed.
         payerName:
           type: string
-          description: Payer account name; omitted when no payer is recorded.
+          description: Payer account name; omitted until the payer has confirmed.
         tenant:
           type: string
           description: Your tenant name.
         seller:
           type: string
           description: Seller email when resolved, otherwise the recipient account name.
-        destinationAddress:
-          type: string
-          description: Recipient wallet address for the settlement destination.
-        destinationNetwork:
-          type: string
-          description: Recipient network for the settlement destination.
         items:
           type: array
           description: >
-            The payment's line items, as sent on create. Returned by
-            `GET /api/merchant/payments/{id}`; not populated by the list
-            endpoint (always empty in CSV).
+            The payment's line items, as sent on create (not necessarily in the
+            same order). Returned by `GET /api/merchant/payments/{id}`; not
+            populated by the list endpoint (always empty in CSV).
           items:
             $ref: '#/components/schemas/PaymentItem'
         createdAt:
@@ -1436,158 +1447,20 @@ components:
           type: string
           format: date-time
       example:
-        id: ba0ffe1c-85dc-4d10-a0c3-7363a1441e1c
-        status: created
-        amount: "1"
-        currencyIn: NGN
-        currencyOut: USDC
-        country: NG
+        id: a0cf3e84-be3f-468c-84a8-45dd62ada6ee
         reference: abc
         purpose: seize global content
-        paymentType: bank
-        payerName: Ada Lovelace
+        status: created
+        type: payment
+        amount: "5000.00"
+        currencyIn: NGN
+        amountUsd: "3.66"
+        currencyOut: USDC
+        country: NG
+        tenant: Acme
         seller: seller@example.com
-        destinationAddress: "0x8439cca53a7f7bcfa3bad61a73e8eceae12d1589"
-        destinationNetwork: arbitrum
-        createdAt: "2026-07-31T06:06:39.828Z"
-        updatedAt: "2026-07-31T06:06:39.828Z"
-
-    Network:
-      type: object
-      description: A bank or mobile-money network a sender can pay from.
-      properties:
-        networkId:
-          type: string
-          description: The network id to use as `source.networkId`.
-          example: 5f1af11b-305f-4420-8fce-65ed2725a409
-        institution:
-          type: string
-          description: Provider institution code, when the provider has one.
-        name:
-          type: string
-          example: Access Bank
-        channel:
-          type: string
-          enum: [bank, momo]
-        providers:
-          type: array
-          description: Provider ids serving the network.
-          items:
-            type: string
-        country:
-          type: string
-          example: NG
-
-    VerificationRequest:
-      type: object
-      required: [accountIdentifier, networkId]
-      properties:
-        accountIdentifier:
-          type: string
-          description: The sender's bank account number, or mobile number (with `+`) on a momo network.
-          example: "1111111111"
-        networkId:
-          type: string
-          description: From `GET /api/merchant/network/{country}`.
-        country:
-          type: string
-          description: The sender's country. Defaults to your merchant user's country.
-          example: NG
-
-    VerificationResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-          description: Whether the provider confirmed the account.
-        accountName:
-          type: string
-          description: The account holder's name, when the provider returns it.
-
-    ReceiveSource:
-      type: object
-      description: The third-party sender's account.
-      required: [accountName, accountIdentifier, networkId]
-      properties:
-        accountName:
-          type: string
-          example: Ken Adams
-        accountIdentifier:
-          type: string
-          description: Bank account number, or mobile number (with `+`) on a momo network.
-          example: "1111111111"
-        networkId:
-          type: string
-          description: From `GET /api/merchant/network/{country}`.
-          example: 5f1af11b-305f-4420-8fce-65ed2725a409
-
-    ReceiveRequest:
-      type: object
-      required: [amountIn, currencyIn, amountOut, rate, source]
-      properties:
-        amountIn:
-          type: string
-          description: What the sender pays, in `currencyIn` (from the quote).
-          example: "5000.00"
-        currencyIn:
-          type: string
-          description: The sender's fiat — the currency of `country`.
-          example: NGN
-        amountOut:
-          type: string
-          description: What you receive, in USDC (from the quote).
-          example: "3.66"
-        currencyOut:
-          type: string
-          description: Ignored — a receive always settles in USDC.
-        rate:
-          type: string
-          description: The quote rate (fiat per token unit).
-          example: "1344.22"
-        source:
-          $ref: '#/components/schemas/ReceiveSource'
-        country:
-          type: string
-          description: The sender's country. Defaults to your merchant user's country.
-          example: NG
-        reference:
-          type: string
-          description: Your unique reference (a generated one when omitted). Reusing a live one is a `409`.
-          example: inv-0001
-        memo:
-          type: string
-          example: Invoice 0001
-        providerId:
-          type: string
-          description: Optional provider pin (`"1"` Paycrest, `"2"` YellowCard); otherwise the quote's provider.
-
-    ReceiveResponse:
-      type: object
-      required: [id]
-      properties:
-        id:
-          type: string
-          format: uuid
-          description: The receive id — for `GET /api/merchant/receive/{id}[/status]`.
-        bankInfo:
-          type: object
-          description: >
-            Present for a bank collection only: the deposit instructions to
-            forward to the sender. Absent for mobile money.
-          properties:
-            accountName:
-              type: string
-            accountNumber:
-              type: string
-            institution:
-              type: string
-            reference:
-              type: string
-              description: The reference the sender must quote on the transfer.
-            amount:
-              type: string
-            currency:
-              type: string
+        createdAt: "2026-11-01T13:52:29.417Z"
+        updatedAt: "2026-11-01T13:52:29.417Z"
 
     ErrorResponse:
       type: object
