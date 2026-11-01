@@ -1,0 +1,788 @@
+{
+  "info": {
+    "_postman_id": "6aedcb08-0604-4b77-b6eb-333ad5922735",
+    "name": "Blinx API",
+    "description": "Blinx API (signed requests). Set api_key and api_secret; the collection pre-request script signs every request (x-api-key, x-timestamp, x-signature). See docs/postman-pre-request.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "386887"
+  },
+  "item": [
+    {
+      "name": "payments",
+      "item": [
+        {
+          "name": "create payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ─────────────────────────────────────────────────────────────────────────────\n// Blinx — Postman POST-RESPONSE script\n// Grabs response.data.redirectUrl and offers a one-click \"Copy\" in the Visualize tab.\n//\n// Paste into the request's \"Scripts → Post-response\" tab (older UI: \"Tests\").\n//\n// Why a button: Postman's sandbox has no OS clipboard access, and browsers only\n// allow a clipboard write on a real click — so the copy happens when you press\n// the button in the Visualize tab. The value is also saved to the `redirectUrl`\n// variable and logged to the console for use without clicking.\n// ─────────────────────────────────────────────────────────────────────────────\n\nlet redirectUrl;\ntry {\n  const body = pm.response.json();\n  redirectUrl = body && body.data ? body.data.redirectUrl : undefined;\n  payment_id = body && body.data ? body.data.id : undefined;\n} catch (e) {\n  console.log('Response is not JSON:', e.message);\n}\n\nif (!redirectUrl) {\n  console.log('No data.redirectUrl in the response.');\n  pm.visualizer.set('<p style=\"font-family:sans-serif;color:#b00\">No <code>data.redirectUrl</code> in the response.</p>');\n} else {\n  // Save + log so it is usable without opening the Visualize tab.\n  pm.environment.set('redirectUrl', redirectUrl);\n  pm.variables.set('redirectUrl', redirectUrl);\n  console.log('redirectUrl:', redirectUrl);\n\n  const parts = redirectUrl.split('/')\n  const payment_code = parts[parts.length-1]\n  pm.collectionVariables.set(\"payment_id\", payment_id);\n  pm.collectionVariables.set(\"payment_code\", payment_code);\n  console.log('payment_id:', payment_id, pm.collectionVariables.get(\"payment_id\"));\n\n  const template = `\n    <div style=\"font-family:sans-serif;font-size:13px\">\n      <input id=\"u\" style=\"width:100%;box-sizing:border-box;padding:8px\" value=\"{{url}}\" readonly>\n      <div style=\"margin-top:8px\">\n        <button id=\"b\" style=\"padding:8px 14px;cursor:pointer\">Copy redirectUrl</button>\n        <a href=\"{{url}}\" target=\"_blank\" rel=\"noopener\" style=\"margin-left:10px\">Open ↗</a>\n        <span id=\"s\" style=\"margin-left:10px;color:#080\"></span>\n      </div>\n    </div>\n    <script>\n      document.getElementById('b').addEventListener('click', function () {\n        var el = document.getElementById('u');\n        var ok = function () { document.getElementById('s').textContent = 'Copied!'; };\n        var viaExec = function () {\n          el.focus(); el.select();\n          try { if (document.execCommand('copy')) return ok(); } catch (e) {}\n          document.getElementById('s').textContent = 'Press Ctrl/Cmd+C';\n        };\n        if (navigator.clipboard && navigator.clipboard.writeText) {\n          navigator.clipboard.writeText(el.value).then(ok, viaExec);\n        } else {\n          viaExec();\n        }\n      });\n    </script>\n  `;\n  pm.visualizer.set(template, { url: redirectUrl });\n}\n"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": ""
+              },
+              {
+                "key": "x-timestamp",
+                "value": ""
+              },
+              {
+                "key": "x-signature",
+                "value": ""
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"1500\",\n  \"fiat\": \"BWP\",\n  \"token\": \"USDC\",\n  \"country\": \"BW\",\n  \"network\": \"BASE\",\n  \"type\": \"gift\",\n  \"reference\": \"{{$guid}}\",\n  \"purpose\": \"{{$randomBs}}\",\n  \"validUntil\": {{valid_until}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/payments",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "payments"
+              ]
+            },
+            "description": "Create a payment (payment link). Price it with amount (local fiat) or amountUsd (USD you receive; the payer's fiat amount is solved) — at least one; with both, amountUsd decides. Requires the tenant to have passed KYB and KYC. The response carries data.redirectUrl; the post-response script stores the payment id in {{payment_id}}."
+          },
+          "response": []
+        },
+        {
+          "name": "get payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": ""
+              },
+              {
+                "key": "x-timestamp",
+                "value": ""
+              },
+              {
+                "key": "x-signature",
+                "value": ""
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/payments",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "payments"
+              ]
+            },
+            "description": "List the tenant's payments. Optional ?senderId=<recipient id> narrows to one payer."
+          },
+          "response": []
+        },
+        {
+          "name": "get payments csv",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": ""
+              },
+              {
+                "key": "x-timestamp",
+                "value": ""
+              },
+              {
+                "key": "x-signature",
+                "value": ""
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/payments?format=csv",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "payments"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "csv"
+                }
+              ]
+            },
+            "description": "Same list as CSV (attachment payments.csv)."
+          },
+          "response": []
+        },
+        {
+          "name": "get payment",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": ""
+              },
+              {
+                "key": "x-timestamp",
+                "value": ""
+              },
+              {
+                "key": "x-signature",
+                "value": ""
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/payments/{{payment_id}}",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "payments",
+                "{{payment_id}}"
+              ]
+            },
+            "description": "One payment of the tenant."
+          },
+          "response": []
+        },
+        {
+          "name": "get payment status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": ""
+              },
+              {
+                "key": "x-timestamp",
+                "value": ""
+              },
+              {
+                "key": "x-signature",
+                "value": ""
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/payments/{{payment_id}}/status",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "payments",
+                "{{payment_id}}",
+                "status"
+              ]
+            },
+            "description": "Status of one payment of the tenant."
+          },
+          "response": []
+        },
+        {
+          "name": "get payment limits",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": ""
+              },
+              {
+                "key": "x-timestamp",
+                "value": ""
+              },
+              {
+                "key": "x-signature",
+                "value": ""
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/payments/limits/{{country}}",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "payments",
+                "limits",
+                "{{country}}"
+              ]
+            },
+            "description": "Public (no auth): payment limits for a country (ISO 3166-1 alpha-2). The collection signs every request anyway; the signature is ignored here."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "quote",
+      "item": [
+        {
+          "name": "quote",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": ""
+              },
+              {
+                "key": "x-timestamp",
+                "value": ""
+              },
+              {
+                "key": "x-signature",
+                "value": ""
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountIn\": \"1500\",\n  \"currencyIn\": \"XAF\",\n  \"country\": \"CM\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/quote",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "quote"
+              ]
+            },
+            "description": "Best quote across providers. currencyIn → currencyOut decides the side (fiat → token = receive/payment, token → fiat = send). Send amountIn or amountOut. A missing token side defaults to USD (USDC). The response presents tokens by their fiat denomination (USDC → USD) and carries side."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "receive",
+      "description": "Receive funds from a third-party sender (diagrams/merchant-api/receive.puml): list networks → verify the account → create the receive → check its status. Set receive_country / receive_channel first.",
+      "item": [
+        {
+          "name": "networks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/network/{{receive_country}}",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "network",
+                "{{receive_country}}"
+              ]
+            },
+            "description": "Bank / mobile-money networks a sender in receive_country can pay from (optional ?provider=1|2). The post-response script stores the first network of receive_channel in {{source_network_id}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Stores the first network of the receive channel as the receive source network.",
+                  "try {",
+                  "  const body = pm.response.json();",
+                  "  const channel = pm.collectionVariables.get(\"receive_channel\") || \"bank\";",
+                  "  const list = body && Array.isArray(body.data) ? body.data : [];",
+                  "  const pick = list.find((n) => n.channel === channel && n.networkId) || list.find((n) => n.networkId);",
+                  "  if (pick) {",
+                  "    pm.collectionVariables.set(\"source_network_id\", pick.networkId);",
+                  "    console.log(\"source_network_id:\", pick.networkId, pick.name, pick.channel);",
+                  "  }",
+                  "} catch (e) {",
+                  "  console.log(\"Response is not JSON:\", e.message);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/verification",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "verification"
+              ]
+            },
+            "description": "Verify the sender's account on its network: {accountIdentifier, networkId, country?} → {data: {success, accountName?}}. A mobile number (+) on a bank network is a 400. Sandbox: 0000000000 / 1111111111 always verify.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountIdentifier\": \"1111111111\",\n  \"networkId\": \"{{source_network_id}}\",\n  \"country\": \"{{receive_country}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "receive",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/receive",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "receive"
+              ]
+            },
+            "description": "Create a receive (KYB + KYC required). Take amountIn / amountOut / rate from a receive quote; settles in USDC to the vault address (currencyOut ignored). source = {accountName, accountIdentifier, networkId}. Returns {data: {id, bankInfo?}} — bankInfo only for a bank collection. The post-response script stores {{receive_id}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountIn\": \"5000.00\",\n  \"currencyIn\": \"{{receive_currency}}\",\n  \"amountOut\": \"3.66\",\n  \"rate\": \"1344.22\",\n  \"country\": \"{{receive_country}}\",\n  \"reference\": \"{{$randomUUID}}\",\n  \"memo\": \"{{$randomBsNoun}}\",\n  \"source\": {\n    \"accountName\": \"Ken Adams\",\n    \"accountIdentifier\": \"1111111111\",\n    \"networkId\": \"{{source_network_id}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Stores the receive id for the get receive / get receive status requests.",
+                  "try {",
+                  "  const body = pm.response.json();",
+                  "  const data = body && body.data;",
+                  "  if (data && data.id) {",
+                  "    pm.collectionVariables.set(\"receive_id\", data.id);",
+                  "    console.log(\"receive_id:\", data.id, \"bankInfo:\", JSON.stringify(data.bankInfo || null));",
+                  "  } else {",
+                  "    console.log(\"No data.id in the response.\");",
+                  "  }",
+                  "} catch (e) {",
+                  "  console.log(\"Response is not JSON:\", e.message);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get receive",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/receive/{{receive_id}}",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "receive",
+                "{{receive_id}}"
+              ]
+            },
+            "description": "One receive of the tenant (type topup), in any status. 404 for any other id."
+          }
+        },
+        {
+          "name": "get receive status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/receive/{{receive_id}}/status",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "receive",
+                "{{receive_id}}",
+                "status"
+              ]
+            },
+            "description": "Only the receive's status: {data: {status}}. Poll until settled / failed / rejected / expired / cancelled, or use a PAYMENT_UPDATE webhook."
+          }
+        }
+      ]
+    },
+    {
+      "name": "webhooks",
+      "description": "Webhook subscriptions. Deliveries are {topic, tenantId, data}, signed with your apiSecret in X-Blinx-Signature: t=<ts>,v1=hex HMAC-SHA256(\"<ts>.<raw body>\"); answer 202 Accepted.",
+      "item": [
+        {
+          "name": "create webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/webhooks",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "webhooks"
+              ]
+            },
+            "description": "Register an https endpoint for topics (PAYMENT_UPDATE covers payment and receive status changes). The post-response script stores {{webhook_id}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uri\": \"https://merchant.example.com/blinx/webhooks\",\n  \"topics\": [\n    \"PAYMENT_UPDATE\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Stores the webhook id for the update request.",
+                  "try {",
+                  "  const body = pm.response.json();",
+                  "  const hook = body && (body.data || body);",
+                  "  if (hook && hook.id) {",
+                  "    pm.collectionVariables.set(\"webhook_id\", hook.id);",
+                  "    console.log(\"webhook_id:\", hook.id);",
+                  "  }",
+                  "} catch (e) {",
+                  "  console.log(\"Response is not JSON:\", e.message);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get webhooks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/webhooks",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "webhooks"
+              ]
+            },
+            "description": "The tenant's webhook subscriptions."
+          }
+        },
+        {
+          "name": "update webhook",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/webhooks/{{webhook_id}}",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "webhooks",
+                "{{webhook_id}}"
+              ]
+            },
+            "description": "Change a subscription's topics and/or active flag (the uri is immutable).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "data",
+      "item": [
+        {
+          "name": "country data",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/data/{{country}}",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "data",
+                "{{country}}"
+              ]
+            },
+            "description": "Reference data for a country: currency, dialling info, travel-rule threshold and fields, payment limits per channel."
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "// /healthcheck is unauthenticated — skip signing so it works without credentials.",
+          "const _path = typeof pm.request.url.getPath === 'function' ? pm.request.url.getPath() : '';",
+          "if (_path === '/healthcheck') { return; }",
+          "",
+          "// ─────────────────────────────────────────────────────────────────────────────",
+          "// Blinx payments — Postman PRE-REQUEST script",
+          "//",
+          "// Paste this into the \"Pre-request Script\" tab of the request (or a folder /",
+          "// collection, to cover every request under it). It signs the outgoing request",
+          "// and injects the x-api-key / x-timestamp / x-signature headers that the",
+          "// authenticateSeller middleware expects.",
+          "//",
+          "// Requires two variables (environment, collection, or globals):",
+          "//   api_key     the tenant's raw apiKey      -> sent as x-api-key",
+          "//   api_secret  the tenant's raw apiSecret   -> HMAC key (never sent)",
+          "//",
+          "// Signature = hex HMAC-SHA256(api_secret, `${timestamp}.${METHOD}.${path}.${sha256hex(body)}`)",
+          "//   timestamp : unix epoch MILLISECONDS (server allows ±5 min)",
+          "//   METHOD    : upper-cased HTTP method   (taken from the request)",
+          "//   path      : request target, path + query, exactly as sent",
+          "//   body      : raw request body bytes    (empty for bodyless requests)",
+          "//",
+          "// NOTE: dynamic variables like {{$guid}}/{{$randomUUID}} in the BODY produce a",
+          "// NEW value every time they're resolved. The script resolves the body ONCE and",
+          "// writes it back onto the request, so the value it signs is the exact value",
+          "// Postman sends. (Side effect: the sent body shows those variables already",
+          "// substituted — that is intentional and required for the signature to match.)",
+          "// ─────────────────────────────────────────────────────────────────────────────",
+          "",
+          "const CryptoJS = require('crypto-js');",
+          "",
+          "const apiKey = pm.variables.get('api_key');",
+          "const apiSecret = pm.variables.get('api_secret');",
+          "if (!apiKey || !apiSecret) {",
+          "  throw new Error('Set the \"api_key\" and \"api_secret\" variables before sending.');",
+          "}",
+          "",
+          "",
+          "pm.variables.set('valid_until', `${Date.now() + 24 * 60 * 60 *1000}`)",
+          "",
+          "// Method — from the request, upper-cased.",
+          "const method = pm.request.method.toUpperCase();",
+          "",
+          "// Path + query, exactly as sent. getPathWithQuery() returns \"/path?query\" (no",
+          "// host). replaceIn resolves any {{vars}} used in the URL so it matches the wire.",
+          "const url = pm.request.url;",
+          "let target = typeof url.getPathWithQuery === 'function'",
+          "  ? url.getPathWithQuery()",
+          "  : (function () {",
+          "      const p = url.getPath();",
+          "      const q = url.getQueryString();",
+          "      return q ? p + '?' + q : p;",
+          "    })();",
+          "target = pm.variables.replaceIn(target);",
+          "if (target.charAt(0) !== '/') target = '/' + target;",
+          "",
+          "// Raw body bytes. Resolve {{vars}} ONCE, then pin the resolved text back onto the",
+          "// request so the bytes we sign are the exact bytes Postman sends. Without the",
+          "// write-back, dynamic vars (e.g. {{$guid}} in \"reference\") would re-resolve to a",
+          "// DIFFERENT value at send time and the signature would fail. Only \"raw\" bodies",
+          "// are signed; anything else (formdata, urlencoded) hashes as empty.",
+          "let body = '';",
+          "if (pm.request.body && pm.request.body.mode === 'raw' && pm.request.body.raw) {",
+          "  body = pm.variables.replaceIn(pm.request.body.raw.toString());",
+          "  pm.request.body.update({ mode: 'raw', raw: body });",
+          "}",
+          "",
+          "const timestamp = Date.now().toString();",
+          "const bodyHash = CryptoJS.SHA256(body).toString(CryptoJS.enc.Hex);",
+          "const canonical = timestamp + '.' + method + '.' + target + '.' + bodyHash;",
+          "const signature = CryptoJS.HmacSHA256(canonical, apiSecret).toString(CryptoJS.enc.Hex);",
+          "",
+          "// upsert = add or overwrite, so re-sending doesn't stack duplicate headers.",
+          "pm.request.headers.upsert({ key: 'x-api-key', value: apiKey });",
+          "pm.request.headers.upsert({ key: 'x-timestamp', value: timestamp });",
+          "pm.request.headers.upsert({ key: 'x-signature', value: signature });",
+          "",
+          "//  Uncomment to debug (never logs the secret):",
+          "console.log('canonical:', canonical);",
+          "console.log('x-signature:', signature);",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "sandbox_url",
+      "value": "https://sandbox.api.blinx.xyz"
+    },
+    {
+      "key": "api_key",
+      "value": ""
+    },
+    {
+      "key": "api_secret",
+      "value": ""
+    },
+    {
+      "key": "payment_id",
+      "value": ""
+    },
+    {
+      "key": "country",
+      "value": "BW"
+    },
+    {
+      "key": "payment_code",
+      "value": ""
+    },
+    {
+      "key": "receive_country",
+      "value": "NG",
+      "type": "string"
+    },
+    {
+      "key": "receive_currency",
+      "value": "NGN",
+      "type": "string"
+    },
+    {
+      "key": "receive_channel",
+      "value": "bank",
+      "type": "string"
+    },
+    {
+      "key": "source_network_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "receive_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "webhook_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

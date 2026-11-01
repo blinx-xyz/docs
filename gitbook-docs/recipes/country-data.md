@@ -1,6 +1,6 @@
 # Country Data
 
-A practical guide to reading **reference data for a supported country** — its currency and dialling info, the travel-rule threshold that governs transfers, and the amount limits per payout channel. For the exact request/response contract see the OpenAPI spec (`seller-payments.openapi.yaml`, tag _Merchant_); for signing see the main README and Sign a request.
+A practical guide to reading **reference data for a supported country** — its currency and dialling info, the travel-rule threshold that governs transfers, and the amount limits per payout channel. For the exact request/response contract see the OpenAPI spec (`blinx-openapi.yaml`, tag _Merchant_); for signing see the main README and Sign a request.
 
 #### Concepts
 

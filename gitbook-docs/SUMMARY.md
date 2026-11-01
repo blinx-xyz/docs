@@ -7,6 +7,7 @@
 
 * [Country Data](recipes/country-data.md)
 * [Create a Payment](recipes/create-a-payment.md)
+* [Receive Funds](recipes/receive-funds.md)
 * [Test the Blinx system with Postman](recipes/test-the-blinx-system-with-postman.md)
 
 ## Code Snippets

@@ -2,11 +2,11 @@
 
 ### Create and check a payment
 
-A practical guide to creating a **payment**, handing it off to the payer, and learning its outcome. For the exact request/response contract see the OpenAPI spec (`seller-payments.openapi.yaml`, tag _Merchant Payments_); for signing see the main README and Sign a payment request.
+A practical guide to creating a **payment**, handing it off to the payer, and learning its outcome. For the exact request/response contract see the OpenAPI spec (`blinx-openapi.yaml`, tag _Merchant Payments_); for signing see the main README and Sign a payment request.
 
 #### Concepts
 
-* **Payment** — a request for a payer to pay you. You create it in the local **`fiat`** currency the payer pays; you (the merchant) are settled in the **`token`** you choose. `amount` is the decimal amount in that `fiat` currency.
+* **Payment** — a request for a payer to pay you. You create it in the local **`fiat`** currency the payer pays; you (the merchant) are settled in the **`token`** you choose. Price it with **either** `amount` — the decimal amount in that `fiat` currency — **or** `amountUsd` — the USD you want to receive, from which the quote solves the fiat the payer pays (fees included).
 * **`redirectUrl`** — the hosted URL returned on create. The payer completes the payment there; your integration's only job is to get the payer to it. Its last path segment is the payment **`code`** (see below), not the payment `id`.
 * **`code`** — a short, human-readable payer code (format `word-word-####C`, e.g. `foam-bark-95162`) returned alongside `id` on create. It is what appears in `redirectUrl`; the internal payment `id` never leaks into the payer link.
 * **Corridor** — the `(country, fiat)` pair. It decides which amount limits apply and whether the payment can be created at all. Currencies shared across countries (XOF, XAF) are bounded **per country**, so pass `country` to disambiguate; it falls back to `fiat` when omitted.
@@ -55,13 +55,12 @@ All endpoints are under `/api/merchant` and require the standard apiKey + apiSec
 Every payment converts the payer's **fiat** into your **token** through a payout **provider**. Several providers can serve the same corridor at different prices, so Blinx asks all of them and keeps the best one.
 
 ```
-                 QuoteRequest { amount, currencyIn, currencyOut, country }
+                 QuoteRequest { amountIn | amountOut, currencyIn, currencyOut, country }
                                        │
                                        ▼
                   ┌──────────────── derive side ────────────────┐
                   │ fiat  → token  = receive   (payment case)   │
                   │ token → fiat   = send                       │
-                  │ token → token  = transfer                   │
                   │ fiat  → fiat   = rejected (400)             │
                   └─────────────────────────────────────────────┘
                                        │
@@ -81,7 +80,8 @@ Every payment converts the payer's **fiat** into your **token** through a payout
                       pick the highest amountOut  ──► providerId
                                        │
                          none succeeded? ──► 400 PAY_AMOUNT_OUT_OF_RANGE /
-                                       │      PAY_LOW_AMOUNT / PAY_FAILED_QUOTE
+                                       │      400 PAY_LOW_AMOUNT /
+                                       │      503 PAY_FAILED_QUOTE
                                        ▼
           QuoteResponse { amountIn, amountOut, rate, localFee, providerId, ttl }
                      (cached for ttl seconds — default 1800)
@@ -91,10 +91,12 @@ What this means for a **payment**:
 
 ```
 POST /quote   ── indicative ──► shows you price, fee and limits; binds nothing
-POST /payments ─────────────► takes its OWN fresh best quote → stores providerId
+POST /payments ─────────────► checks the amount with the providers' OWN quotes;
+                               exactly one can serve it? → stores that providerId
                                │
-                               └─ no provider could quote right now?
-                                    payment is still created without a provider
+                               └─ no provider can serve it? the create fails
+                                    with the quote's error (400 / 503); nothing
+                                    is stored
 PUT  (payer confirms) ───────► provider stored? use it
                                otherwise take a fresh best quote now;
                                if that fails the confirm fails, the payment
@@ -102,7 +104,8 @@ PUT  (payer confirms) ───────► provider stored? use it
 ```
 
 * **The quote you see is not a reservation.** Rates move; the provider and price that apply are fixed when the payment is created (or, failing that, when the payer confirms).
-* **Use the quote to check an amount before creating.** An out-of-range amount fails with `PAY_AMOUNT_OUT_OF_RANGE` (the message carries the bounds), and an amount too small to pay out anything after fees fails with `PAY_LOW_AMOUNT`.
+* **Use the quote to check an amount before creating.** An out-of-range amount fails with `PAY_AMOUNT_OUT_OF_RANGE` (the message carries the bounds), and an amount too small to pay out anything after fees fails with `PAY_LOW_AMOUNT`. Creating the payment answers the same way.
+* **No provider able to quote is `503 PAY_FAILED_QUOTE`** on the quote, the create and the payer's confirm — a temporary condition: retry later.
 * **`rate`** is fiat per token unit; **`localFee`** is the provider fee in the fiat; **`amountOut`** is what you would receive in `currencyOut` after fees.
 
 #### Walkthrough
@@ -129,18 +132,20 @@ Check the price and that the amount is payable for the corridor:
 curl -X POST http://localhost:3001/api/merchant/quote \
   -H 'Content-Type: application/json' \
   -H "x-api-key: $KEY" -H "x-timestamp: $TS" -H "x-signature: $SIG" \
-  -d '{"amount":"5000","currencyIn":"NGN","currencyOut":"USDC","country":"NG"}'
+  -d '{"amountIn":"5000","currencyIn":"NGN","currencyOut":"USDC","country":"NG"}'
 ```
 
 For a payment, `currencyIn` is the `fiat` the payer pays and `currencyOut` is your settlement `token`. `200`:
 
 ```json
 { "data": {
-    "currencyIn": "NGN", "currencyOut": "USDC",
-    "amountIn": "5000", "amountOut": "3.02",
-    "rate": "1650.00", "localFee": "25",
-    "providerId": "2", "ttl": 1800 } }
+    "currencyIn": "NGN", "currencyOut": "USD",
+    "amountIn": "5000.00", "amountOut": "3.02",
+    "rate": "1650.00", "localFee": "25.00",
+    "providerId": "2", "side": "receive", "ttl": 1800 } }
 ```
+
+Tokens come back by their fiat denomination (`USDC` → `USD`), with the derived `side`.
 
 Optional body fields: `channel` (`bank` | `momo`) and `providers` (e.g. `["2"]`) to restrict which providers compete.
 
@@ -157,7 +162,8 @@ The body is a `PaymentRequest`:
 
 | Field        | Required | Description                                                                                                               |
 | ------------ | -------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `amount`     | yes      | Decimal string, in the `fiat` currency. Must fall within the corridor's `payments.min`/`payments.max`.                    |
+| `amount`     | one of   | Decimal string, in the `fiat` currency. Must fall within the corridor's `payments.min`/`payments.max`.                    |
+| `amountUsd`  | one of   | Decimal string, in USD — what you receive. The payer's fiat amount is solved from it. With both, `amountUsd` decides.       |
 | `fiat`       | yes      | Local currency the payer pays (e.g. `NGN`). Must be `country`'s currency.                                                 |
 | `token`      | yes      | Settlement token you receive: `USDC` or `USDT`.                                                                           |
 | `country`    | yes      | ISO 3166-1 alpha-2 code (e.g. `NG`).                                                                                      |
@@ -196,7 +202,8 @@ The body is a `PaymentRequest`:
 
 * **Give the payer the `redirectUrl`.** They complete the payment there; the payment starts at status `created`. The URL's last path segment is the payer `code`, not the `id`.
 * **Capture the `id`** returned alongside `redirectUrl` and `code` — it's the payment id you poll with in step 3. `validUntil` is when the payment expires.
-* A request that fails validation → `400 PAY_INVALID_QUOTE_REQUEST`, with an `errors` **array** of `{ field, value, message }` entries (every failing field reported at once): a non-positive or out-of-range `amount`, a `fiat` that does not match `country`, an unsupported `token`, an invalid `network`/`type`/`validUntil`, a missing/unsafe `reference`/`purpose`, malformed `items`, or an **amount too low to produce a payout** (reported as an `amount` field error, message `amount is too low to produce a payout`). The amount range is the **country-wide envelope**: the top-level `payments.min` / `payments.max` from `GET /api/merchant/data/{country}` (or `GET /api/merchant/payments/limits/{country}`), **not** the per-channel `payments.bank` / `payments.momo` bounds.
+* A request that fails validation → `400 PAY_INVALID_QUOTE_REQUEST`, with an `errors` **array** of `{ field, value, message }` entries (every failing field reported at once): a non-positive `amount`, a `fiat` that does not match `country`, an unsupported `token`, an invalid `network`/`type`/`validUntil`, a missing/unsafe `reference`/`purpose`, or malformed `items`.
+* The `amount` is checked against the payout providers' own quotes, with the same errors as the quote (no `errors` array): an amount no provider serves → `400 PAY_AMOUNT_OUT_OF_RANGE` (the message carries the bounds); one whose payout rounds to `0` after fees → `400 PAY_LOW_AMOUNT`; no provider able to quote right now → `503 PAY_FAILED_QUOTE` (retry later). As a guide use the **country-wide envelope**: the top-level `payments.min` / `payments.max` from `GET /api/merchant/data/{country}` (or `GET /api/merchant/payments/limits/{country}`), **not** the per-channel `payments.bank` / `payments.momo` bounds.
 * An unsupported `country`/`fiat` → `400 PAY_COUNTRY_NOT_SUPPORTED` (here `errors` is a single `{ field, value }` object, not an array).
 * Reusing a `reference` that still belongs to a live or settled payment → `409 DB_409_DUPLICATE_ENTRY`. A reference frees up only once its payment reaches a failed terminal state (`expired`/`rejected`/`failed`/`cancelled`).
 
@@ -274,11 +281,11 @@ Rows have the same flat shape as the single-payment read. The list also includes
 
 | Status / code                                                 | When                                                                                                                                                                                                                                                                                                                                                                |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `400 PAY_INVALID_QUOTE_REQUEST`                               | Create: request failed validation; `errors` is an array of `{ field, value, message }` (bad/out-of-range `amount`, mismatched `fiat`/`country`, unsupported `token`, invalid `network`/`type`/`validUntil`, missing/unsafe `reference`/`purpose`, malformed `items`, or an `amount` too low to produce a payout). Quote: non-positive `amount` or unsupported token |
+| `400 PAY_INVALID_QUOTE_REQUEST`                               | Request failed validation; `errors` is an array of `{ field, value, message }`. Create: non-positive `amount`, mismatched `fiat`/`country`, unsupported `token`, invalid `network`/`type`/`validUntil`, missing/unsafe `reference`/`purpose`, malformed `items`. Quote: non-positive amount or unsupported token |
 | `400 PAY_400_INVALID_REQUEST`                                 | Quote only: fiat → fiat pair, or a fiat that does not match `country`                                                                                                                                                                                                                                                                                               |
-| `400 PAY_AMOUNT_OUT_OF_RANGE`                                 | Quote only: `amount` is outside the corridor's country-wide envelope (message carries the bounds)                                                                                                                                                                                                                                                                   |
-| `400 PAY_LOW_AMOUNT`                                          | Quote only: `amount` is within range but its payout, after fees, rounds to `0`                                                                                                                                                                                                                                                                                      |
-| `400 PAY_FAILED_QUOTE`                                        | Quote only: no provider could quote the request                                                                                                                                                                                                                                                                                                                     |
+| `400 PAY_AMOUNT_OUT_OF_RANGE`                                 | Quote and create: no provider serves this `amount` (message carries the bounds) |
+| `400 PAY_LOW_AMOUNT`                                          | Quote and create: `amount` is within range but its payout, after fees, rounds to `0` |
+| `503 PAY_FAILED_QUOTE`                                        | Quote, create and payer confirm: no provider could quote right now; retry later |
 | `400 PAY_COUNTRY_NOT_SUPPORTED`                               | `country`/`fiat` maps to no supported corridor                                                                                                                                                                                                                                                                                                                      |
 | `409 DB_409_DUPLICATE_ENTRY`                                  | `reference` already belongs to a live or settled payment                                                                                                                                                                                                                                                                                                            |
 | `401 AUTH_401_INVALID_SIGNATURE` / `AUTH_401_INVALID_API_KEY` | Bad/missing signature, key, or stale timestamp (see the Content-Type note above)                                                                                                                                                                                                                                                                                    |

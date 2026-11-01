@@ -1,12 +1,13 @@
 openapi: 3.1.0
 
 info:
-  title: Blinx Merchant Payments API
-  version: "1.8.0"
+  title: Blinx Merchant API
+  version: "1.9.0"
   description: |
-    Merchant-facing endpoints for creating and reading payments. Merchants are
-    authenticated per request with an **apiKey + apiSecret HMAC signature** —
-    there is no session or bearer token.
+    Merchant-facing endpoints: quotes, payment links, and **receives** — direct
+    collections from a third-party sender (see the _Merchant Receive_ tag).
+    Merchants are authenticated per request with an **apiKey + apiSecret HMAC
+    signature** — there is no session or bearer token.
 
     ---
 
@@ -95,11 +96,18 @@ security:
 tags:
   - name: Merchant Payments
     description: Create and read payments as an authenticated merchant (tenant).
+  - name: Merchant Receive
+    description: >
+      Receive funds directly from a third-party sender (no payer page): list
+      the networks the sender can pay from, verify the sender's account,
+      create the receive and follow its status. A receive settles in USDC to
+      your vault address.
   - name: Merchant Data
     description: >
       Read-only reference data for a supported country — currency and dialling
       info, the travel-rule threshold and required fields for transfers,
-      and payment amount limits per payout channel.
+      payment amount limits per payout channel — and quotes: the best price
+      across providers for a currency pair and amount.
 
 paths:
   /api/merchant/payments:
@@ -113,26 +121,33 @@ paths:
         `id` and its `validUntil` expiry.
 
         The payer pays in the local **`fiat`** currency and the merchant is
-        settled in the **`token`** they choose; `amount` is the decimal amount in
-        that `fiat` currency. `amount` must fall within the supported range for
-        the corridor — bounded per country so that currencies shared across
-        countries (XOF, XAF) are validated correctly. A request that fails
-        validation (bad `amount`, mismatched `fiat`/`country`, unsupported
-        `token`, invalid `network`/`type`/`validUntil`, missing/unsafe
-        `reference`/`purpose`, or malformed `items`) returns
-        `400 PAY_INVALID_QUOTE_REQUEST` with a per-field `errors` array. An
+        settled in the **`token`** they choose. Price the payment with **either**:
+
+        - `amount` — the amount in the local `fiat` the payer pays; or
+        - `amountUsd` — the amount in USD you want to receive. The fiat amount
+          the payer pays is solved from it by the quote (fees included).
+
+        At least one is required; with both, `amountUsd` decides. A request that
+        fails validation (neither amount, a non-positive `amount`/`amountUsd`, mismatched `fiat`/`country`, unsupported `token`, invalid
+        `network`/`type`/`validUntil`, missing/unsafe `reference`/`purpose`, or
+        malformed `items`) returns `400 PAY_INVALID_QUOTE_REQUEST` with a
+        per-field `errors` array. An
         unsupported `country`/`fiat` fails with `400 PAY_COUNTRY_NOT_SUPPORTED`,
         and reusing a `reference` that still belongs to a live or settled
         payment fails with `409 DB_409_DUPLICATE_ENTRY`.
 
         Optional `items` attach line items (what the payer is paying for). They
         are informational: they are shown to the payer on the hosted payment
-        page and never change the amount charged, which is always `amount`.
+        page and never change the amount charged.
 
-        The payout provider is picked when the payment is created, from a
-        fresh best quote across the providers serving the corridor. If no
-        provider can quote at that moment the payment is still created and the
-        provider is resolved again when the payer confirms. A merchant
+        The amount is checked against the payout providers' own quotes, with
+        the same errors as `POST /api/merchant/quote` (no `errors` array): an
+        amount no provider serves fails with `400 PAY_AMOUNT_OUT_OF_RANGE` (the
+        message carries the bounds), one whose payout rounds to `0` with
+        `400 PAY_LOW_AMOUNT`, and no provider able to quote with
+        `503 PAY_FAILED_QUOTE` (retry later); nothing is stored. When exactly
+        one provider can serve it, that provider is fixed on the payment;
+        otherwise the payer's bank picks it when the payer confirms. A merchant
         `POST /api/merchant/quote` beforehand is indicative only and does not
         bind the provider used for the payment.
       requestBody:
@@ -141,23 +156,46 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PaymentRequest'
-            example:
-              amount: "5000"
-              fiat: NGN
-              token: USDC
-              country: NG
-              reference: abc
-              purpose: seize global content
-              type: other
-              validUntil: "2026-08-01T00:00:00.000Z"
-              items:
-                - name: Annual subscription
-                  description: Global content plan, 12 months
-                  price: "4000"
-                  units: "1"
-                - name: Setup fee
-                  price: "1000"
-                  units: "1"
+            examples:
+              local:
+                summary: Priced in the local fiat
+                value:
+                  amount: "5000"
+                  fiat: NGN
+                  token: USDC
+                  country: NG
+                  reference: abc
+                  purpose: seize global content
+                  type: other
+              usd:
+                summary: Priced in USD — the payer's fiat amount is solved
+                value:
+                  amountUsd: "10"
+                  fiat: NGN
+                  token: USDC
+                  country: NG
+                  reference: abc-usd
+                  purpose: seize global content
+                  type: other
+              withItems:
+                summary: With line items
+                value:
+                  amount: "5000"
+                  fiat: NGN
+                  token: USDC
+                  country: NG
+                  reference: abc
+                  purpose: seize global content
+                  type: other
+                  validUntil: "2026-08-01T00:00:00.000Z"
+                  items:
+                    - name: Annual subscription
+                      description: Global content plan, 12 months
+                      price: "4000"
+                      units: "1"
+                    - name: Setup fee
+                      price: "1000"
+                      units: "1"
       responses:
         "201":
           description: Payment created.
@@ -179,6 +217,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "409":
           $ref: '#/components/responses/DuplicateReference'
+        "503":
+          $ref: '#/components/responses/QuoteUnavailable'
     get:
       tags: [Merchant Payments]
       operationId: getPayments
@@ -359,7 +399,7 @@ paths:
 
   /api/merchant/quote:
     post:
-      tags: [Merchant Payments]
+      tags: [Merchant Data]
       operationId: getQuote
       summary: Quote a conversion
       description: |
@@ -373,10 +413,12 @@ paths:
         |------------------------------|-----------|------------------|
         | fiat → token (`NGN`→`USDC`)  | `receive` | the fiat (`currencyIn`) — the payment case |
         | token → fiat (`USDC`→`NGN`)  | `send`    | the token (`currencyIn`) |
-        | token → token                | `transfer`| the token        |
 
         Fiat → fiat is rejected. `USD` and `EUR` are accepted as aliases of
-        `USDC` and `EURe`. A token the providers do not settle in directly
+        `USDC` and `EURe`; when the token side is omitted against a fiat side it
+        defaults to `USD` (USDC). The response presents tokens by their fiat
+        denomination (`USDC`/`USDT` → `USD`, `EURe` → `EUR`) and carries the
+        derived `side`. A token the providers do not settle in directly
         (e.g. `USDT`, `EURe`) is bridged through a USDC swap; the quote is
         still expressed in your tokens and carries `swappedToken` /
         `swappedAmount`.
@@ -386,12 +428,16 @@ paths:
         indicative:** `POST /api/merchant/payments` takes its own fresh best
         quote at creation time to pick the provider.
 
+        Send the amount as `amountIn` (what is paid in, in `currencyIn`) or
+        `amountOut` (what must be delivered, in `currencyOut`).
+
         Errors: a malformed pair or a fiat that does not match `country` →
-        `400 PAY_400_INVALID_REQUEST`; a non-positive `amount` or unsupported
-        token → `400 PAY_INVALID_QUOTE_REQUEST`; an `amount` outside the
-        corridor envelope → `400 PAY_AMOUNT_OUT_OF_RANGE` (message carries the
-        bounds); an in-range amount whose payout rounds to `0` →
-        `400 PAY_LOW_AMOUNT`; no provider able to quote → `400 PAY_FAILED_QUOTE`.
+        `400 PAY_400_INVALID_REQUEST`; no currency at all, a non-positive
+        amount or an unsupported token → `400 PAY_INVALID_QUOTE_REQUEST`
+        (per-field `errors`); an `amount` no provider serves →
+        `400 PAY_AMOUNT_OUT_OF_RANGE` (message carries the bounds); an in-range
+        amount whose payout rounds to `0` → `400 PAY_LOW_AMOUNT`; no provider
+        able to quote → `503 PAY_FAILED_QUOTE` (retry later).
       requestBody:
         required: true
         content:
@@ -399,7 +445,7 @@ paths:
             schema:
               $ref: '#/components/schemas/QuoteRequest'
             example:
-              amount: "5000"
+              amountIn: "5000"
               currencyIn: NGN
               currencyOut: USDC
               country: NG
@@ -416,12 +462,13 @@ paths:
               example:
                 data:
                   currencyIn: NGN
-                  currencyOut: USDC
-                  amountIn: "5000"
-                  amountOut: "3.02"
-                  rate: "1650.00"
-                  localFee: "25"
+                  currencyOut: USD
+                  amountIn: "5000.00"
+                  amountOut: "3.66"
+                  rate: "1344.22"
+                  localFee: "25.00"
                   providerId: "2"
+                  side: receive
                   ttl: 1800
         "400":
           $ref: '#/components/responses/InvalidQuoteRequest'
@@ -429,6 +476,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/QuoteUnavailable'
 
   /api/merchant/data/{country}:
     get:
@@ -465,6 +514,309 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+
+  /api/merchant/network/{country}:
+    get:
+      tags: [Merchant Receive]
+      operationId: getReceiveNetworks
+      summary: List the networks a sender can pay from
+      description: |
+        The bank and mobile-money networks a third-party sender in `country`
+        can pay a receive from. Use an entry's `networkId` as the receive
+        `source.networkId` (and in `POST /api/merchant/verification`).
+      parameters:
+        - name: country
+          in: path
+          required: true
+          description: ISO 3166-1 alpha-2 code of the sender's country (e.g. `NG`, `KE`).
+          schema:
+            type: string
+        - name: provider
+          in: query
+          required: false
+          description: Optional provider id (`"1"` Paycrest, `"2"` YellowCard) to narrow the list.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The networks, wrapped in `data`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Network'
+              example:
+                data:
+                  - networkId: 5f1af11b-305f-4420-8fce-65ed2725a409
+                    name: Access Bank
+                    channel: bank
+                    providers: ["2"]
+                    country: NG
+                  - networkId: 30f11b2e-0905-4c09-ba5f-d05aa4e4a11c
+                    name: MTN
+                    channel: momo
+                    providers: ["2"]
+                    country: NG
+        "400":
+          $ref: '#/components/responses/CountryNotSupported'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /api/merchant/verification:
+    post:
+      tags: [Merchant Receive]
+      operationId: verifyAccount
+      summary: Verify a sender account
+      description: |
+        Checks a sender's account on its network before a receive, and resolves
+        the account holder's name when the provider returns it.
+
+        - `networkId` must be a network of `country` (from
+          `GET /api/merchant/network/{country}`), else
+          `400 PAY_400_INVALID_REQUEST` on `networkId`.
+        - A mobile number (leading `+`) on a **bank** network is refused with
+          `400 PAY_400_INVALID_REQUEST` on `accountIdentifier`.
+        - `success: false` means the provider could not confirm the account
+          (still `200`).
+
+        Read-only: not recorded in the tenant audit log.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerificationRequest'
+            example:
+              accountIdentifier: "1111111111"
+              networkId: 5f1af11b-305f-4420-8fce-65ed2725a409
+              country: NG
+      responses:
+        "200":
+          description: The verification result, wrapped in `data`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/VerificationResponse'
+              example:
+                data:
+                  success: true
+                  accountName: Ken Adams
+        "400":
+          $ref: '#/components/responses/InvalidReceiveRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /api/merchant/receive:
+    post:
+      tags: [Merchant Receive]
+      operationId: createReceive
+      summary: Receive funds from a third-party sender
+      description: |
+        Creates a **direct collection** from a third-party sender — there is no
+        payer page. Requires the tenant to have passed KYB and KYC.
+
+        Take `amountIn`, `amountOut` and `rate` from a receive quote
+        (`POST /api/merchant/quote`, fiat → token). The receive always settles
+        in **USDC** to your vault address (a `currencyOut` sent is ignored).
+
+        `source` is the sender's account (`networkId` from
+        `GET /api/merchant/network/{country}`); it is saved as one of your
+        recipients. The same checks as the verification apply: an unknown
+        `networkId`, or a mobile number on a bank network, is a `400`.
+
+        The response carries `bankInfo` for a **bank** collection — the deposit
+        instructions to forward to the sender. A **mobile-money** collection has
+        no `bankInfo`: the provider collects from the sender's wallet directly.
+
+        Follow the outcome with `GET /api/merchant/receive/{id}/status`, or a
+        `PAYMENT_UPDATE` webhook.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReceiveRequest'
+            example:
+              amountIn: "5000.00"
+              currencyIn: NGN
+              amountOut: "3.66"
+              rate: "1344.22"
+              country: NG
+              reference: inv-0001
+              memo: Invoice 0001
+              source:
+                accountName: Ken Adams
+                accountIdentifier: "1111111111"
+                networkId: 5f1af11b-305f-4420-8fce-65ed2725a409
+      responses:
+        "201":
+          description: The receive, wrapped in `data`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ReceiveResponse'
+              examples:
+                bank:
+                  summary: Bank collection — forward bankInfo to the sender
+                  value:
+                    data:
+                      id: c83ab522-94a2-483a-9927-b8c393a38782
+                      bankInfo:
+                        accountName: Ken Adams
+                        accountNumber: "3401018190"
+                        institution: PAGA
+                        reference: inv-0001
+                        amount: "5000.00"
+                        currency: NGN
+                momo:
+                  summary: Mobile-money collection — the provider collects
+                  value:
+                    data:
+                      id: 0d1f7a52-6c43-4b8e-9f7d-0a1b2c3d4e5f
+        "400":
+          $ref: '#/components/responses/InvalidReceiveRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: >
+            The tenant has not passed KYB (`GATE_403_KYB_REQUIRED`) or KYC
+            (`GATE_403_KYC_REQUIRED`), or has no merchant user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: GATE_403_KYB_REQUIRED
+                  message: KYB verification required
+                  status: 403
+        "409":
+          description: >
+            `DB_409_DUPLICATE_ENTRY` — the `reference` is already used by a live
+            or settled transfer; `PAY_409_NO_SETTLEMENT_ASSET` — the tenant has
+            no active vault address to settle to.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: DB_409_DUPLICATE_ENTRY
+                  message: Duplicate entry
+                  status: 409
+                  errors:
+                    - field: reference
+                      value: inv-0001
+                      message: reference already exists
+        "503":
+          $ref: '#/components/responses/QuoteUnavailable'
+
+  /api/merchant/receive/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Receive id (UUID), as returned by `POST /api/merchant/receive`.
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Merchant Receive]
+      operationId: getReceive
+      summary: Get a receive
+      description: |
+        One receive of the caller's tenant, in any status (a `PaymentSummary`
+        row of `type: topup`). Any other id — another tenant's, or a payment
+        link's — is `404 PAY_404_NOT_FOUND`. Receives are also listed by
+        `GET /api/merchant/payments`.
+      responses:
+        "200":
+          description: The receive, wrapped in `data`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PaymentSummary'
+              example:
+                data:
+                  id: c83ab522-94a2-483a-9927-b8c393a38782
+                  reference: inv-0001
+                  status: processing
+                  type: topup
+                  amount: "5000.00"
+                  currencyIn: NGN
+                  amountUsd: "3.53"
+                  currencyOut: USDC
+                  fees: "0.04"
+                  country: NG
+                  paymentType: bank
+                  payerName: Ken Adams
+                  tenant: Acme
+                  createdAt: "2026-11-01T12:38:54.434Z"
+                  updatedAt: "2026-11-01T12:39:08.904Z"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /api/merchant/receive/{id}/status:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Receive id (UUID).
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Merchant Receive]
+      operationId: getReceiveStatus
+      summary: Get a receive's status
+      description: |
+        Lightweight polling endpoint: only the receive's `status`. Same scoping
+        as `GET /api/merchant/receive/{id}`. Poll until a terminal status
+        (`settled`, or `failed`/`rejected`/`expired`/`cancelled`), or register a
+        `PAYMENT_UPDATE` webhook instead.
+      responses:
+        "200":
+          description: The receive status, wrapped in `data`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        $ref: '#/components/schemas/PaymentStatus'
+              example:
+                data:
+                  status: processing
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
 
 components:
   securitySchemes:
@@ -534,9 +886,9 @@ components:
         The payment request failed validation. The error `code` is
         `PAY_INVALID_QUOTE_REQUEST` and `errors` is an **array** of per-field
         `{ field, value, message }` entries — every failing field is reported at
-        once. Failures include: an `amount` that is not a positive number or
-        falls outside the corridor's limits (the message carries the `min`/`max`
-        bounds), a `fiat` that does not match the `country`, an unsupported
+        once. Failures include: neither `amount` nor `amountUsd`, an `amount` or
+        `amountUsd` that is not a positive number, a
+        `fiat` that does not match the `country`, an unsupported
         settlement `token`, an invalid `network`, an unknown `type`, a
         `validUntil` that is not a future ISO 8601 datetime, and a
         missing or unsafe `reference`/`purpose`.
@@ -544,19 +896,33 @@ components:
         An unsupported `country`/`fiat` fails earlier with
         `400 PAY_COUNTRY_NOT_SUPPORTED`; there `errors` is a single
         `{ field, value }` object, not an array.
+
+        An `amount` no payout provider serves answers `PAY_AMOUNT_OUT_OF_RANGE`
+        (bounds in the message, no `errors`), and one whose payout rounds to `0`
+        answers `PAY_LOW_AMOUNT`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
-          example:
-            error:
-              code: PAY_INVALID_QUOTE_REQUEST
-              message: Invalid Quote Request
-              status: 400
-              errors:
-                - field: amount
-                  value: "100"
+          examples:
+            validation:
+              summary: A field failed validation
+              value:
+                error:
+                  code: PAY_INVALID_QUOTE_REQUEST
+                  message: Invalid Quote Request
+                  status: 400
+                  errors:
+                    - field: amount
+                      value: "-5"
+                      message: must be a positive number
+            outOfRange:
+              summary: No provider serves the amount
+              value:
+                error:
+                  code: PAY_AMOUNT_OUT_OF_RANGE
                   message: "Amount for NGN must be between 2,500 and 30,000,000"
+                  status: 400
     DuplicateReference:
       description: >
         A payment with the same `reference` already exists for the tenant and is
@@ -581,12 +947,12 @@ components:
         `PAY_400_INVALID_REQUEST` — a fiat → fiat pair, or a fiat that does not
         match `country` (`errors` names `currencyIn`/`currencyOut`/`country`);
         `PAY_COUNTRY_NOT_SUPPORTED` — unknown `country`;
-        `PAY_INVALID_QUOTE_REQUEST` — a non-positive `amount` or a token other
-        than `EURe`/`USDC`/`USDT` (`errors` is a per-field array);
-        `PAY_AMOUNT_OUT_OF_RANGE` — `amount` is outside the corridor envelope
-        (the message carries the bounds); `PAY_LOW_AMOUNT` — in range, but the
-        payout after fees rounds to `0`; `PAY_FAILED_QUOTE` — no provider could
-        quote the request.
+        `PAY_INVALID_QUOTE_REQUEST` — no currency at all, a non-positive
+        amount or a token other than `EURe`/`USDC`/`USDT` (`errors` is a
+        per-field array); `PAY_AMOUNT_OUT_OF_RANGE` — no provider serves the
+        `amount` (the message carries the bounds); `PAY_LOW_AMOUNT` — in range,
+        but the payout after fees rounds to `0`. No provider able to quote at
+        all is `503 PAY_FAILED_QUOTE` (see QuoteUnavailable).
       content:
         application/json:
           schema:
@@ -600,6 +966,39 @@ components:
                 - field: currencyIn
                   value: KES
                   message: Currency does not correspond to country
+    InvalidReceiveRequest:
+      description: >
+        The request failed validation: `PAY_400_INVALID_REQUEST` with an
+        `errors` array naming every offending field at once — a missing or
+        non-positive amount/rate, a missing `source` field, a `networkId` that
+        is not a network of the country, or a mobile number (leading `+`) on a
+        bank network.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: PAY_400_INVALID_REQUEST
+              message: Invalid Request
+              status: 400
+              errors:
+                - field: source.accountIdentifier
+                  value: "+2348012345678"
+                  message: source.accountIdentifier is a mobile number but Access Bank is a bank
+    QuoteUnavailable:
+      description: >
+        No payout provider could quote the request right now. The error `code` is
+        `PAY_FAILED_QUOTE` and the status is always `503`: retry later.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: PAY_FAILED_QUOTE
+              message: No quotes available from any provider
+              status: 503
 
   schemas:
     CountryData:
@@ -671,14 +1070,25 @@ components:
 
     PaymentRequest:
       type: object
-      required: [amount, fiat, token, reference, purpose, country]
+      required: [fiat, token, reference, purpose, country]
+      description: >
+        Send `amount` (local fiat) or `amountUsd` (USD) — at least one; with
+        both, `amountUsd` decides.
       properties:
         amount:
           type: string
           description: >
-            Decimal amount as a string, denominated in the `fiat` currency the
-            payer pays. Must fall within the corridor's supported range.
+            Decimal amount as a string, in the local `fiat` the payer pays. Must
+            fall within the corridor's supported range. Required unless
+            `amountUsd` is sent.
           example: "5000"
+        amountUsd:
+          type: string
+          description: >
+            Decimal amount as a string, in USD — what you want to receive. The
+            fiat amount the payer pays is solved from it by the quote (fees
+            included). Required unless `amount` is sent.
+          example: "10"
         fiat:
           type: string
           description: >
@@ -815,14 +1225,20 @@ components:
 
     QuoteRequest:
       type: object
-      required: [amount, currencyIn, currencyOut, country]
+      required: [country]
+      description: >
+        Send `amountIn` or `amountOut`, and at least one of `currencyIn` /
+        `currencyOut` (a missing token side defaults to `USD`).
       properties:
-        amount:
+        amountIn:
           type: string
           description: >
-            Decimal amount as a string, in `currencyIn`. For a payment quote
-            (fiat → token) this is the fiat amount the payer pays.
+            Decimal amount as a string, in `currencyIn`. For a payment or receive
+            quote (fiat → token) this is the fiat amount the payer pays.
           example: "5000"
+        amountOut:
+          type: string
+          description: Decimal amount as a string, in `currencyOut` — what must be delivered.
         currencyIn:
           type: string
           description: >
@@ -856,12 +1272,17 @@ components:
       properties:
         currencyIn:
           type: string
-          description: Echo of the requested `currencyIn`.
+          description: The requested `currencyIn`; a token is presented by its fiat denomination (`USDC` → `USD`).
           example: NGN
         currencyOut:
           type: string
-          description: Echo of the requested `currencyOut`.
-          example: USDC
+          description: The requested `currencyOut`; a token is presented by its fiat denomination (`USDC` → `USD`).
+          example: USD
+        side:
+          type: string
+          enum: [receive, send]
+          description: The quote side derived from the currency pair.
+          example: receive
         amountIn:
           type: string
           description: Amount paid in `currencyIn`.
@@ -1037,6 +1458,143 @@ components:
         destinationNetwork: arbitrum
         createdAt: "2026-07-31T06:06:39.828Z"
         updatedAt: "2026-07-31T06:06:39.828Z"
+
+    Network:
+      type: object
+      description: A bank or mobile-money network a sender can pay from.
+      properties:
+        networkId:
+          type: string
+          description: The network id to use as `source.networkId`.
+          example: 5f1af11b-305f-4420-8fce-65ed2725a409
+        institution:
+          type: string
+          description: Provider institution code, when the provider has one.
+        name:
+          type: string
+          example: Access Bank
+        channel:
+          type: string
+          enum: [bank, momo]
+        providers:
+          type: array
+          description: Provider ids serving the network.
+          items:
+            type: string
+        country:
+          type: string
+          example: NG
+
+    VerificationRequest:
+      type: object
+      required: [accountIdentifier, networkId]
+      properties:
+        accountIdentifier:
+          type: string
+          description: The sender's bank account number, or mobile number (with `+`) on a momo network.
+          example: "1111111111"
+        networkId:
+          type: string
+          description: From `GET /api/merchant/network/{country}`.
+        country:
+          type: string
+          description: The sender's country. Defaults to your merchant user's country.
+          example: NG
+
+    VerificationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Whether the provider confirmed the account.
+        accountName:
+          type: string
+          description: The account holder's name, when the provider returns it.
+
+    ReceiveSource:
+      type: object
+      description: The third-party sender's account.
+      required: [accountName, accountIdentifier, networkId]
+      properties:
+        accountName:
+          type: string
+          example: Ken Adams
+        accountIdentifier:
+          type: string
+          description: Bank account number, or mobile number (with `+`) on a momo network.
+          example: "1111111111"
+        networkId:
+          type: string
+          description: From `GET /api/merchant/network/{country}`.
+          example: 5f1af11b-305f-4420-8fce-65ed2725a409
+
+    ReceiveRequest:
+      type: object
+      required: [amountIn, currencyIn, amountOut, rate, source]
+      properties:
+        amountIn:
+          type: string
+          description: What the sender pays, in `currencyIn` (from the quote).
+          example: "5000.00"
+        currencyIn:
+          type: string
+          description: The sender's fiat — the currency of `country`.
+          example: NGN
+        amountOut:
+          type: string
+          description: What you receive, in USDC (from the quote).
+          example: "3.66"
+        currencyOut:
+          type: string
+          description: Ignored — a receive always settles in USDC.
+        rate:
+          type: string
+          description: The quote rate (fiat per token unit).
+          example: "1344.22"
+        source:
+          $ref: '#/components/schemas/ReceiveSource'
+        country:
+          type: string
+          description: The sender's country. Defaults to your merchant user's country.
+          example: NG
+        reference:
+          type: string
+          description: Your unique reference (a generated one when omitted). Reusing a live one is a `409`.
+          example: inv-0001
+        memo:
+          type: string
+          example: Invoice 0001
+        providerId:
+          type: string
+          description: Optional provider pin (`"1"` Paycrest, `"2"` YellowCard); otherwise the quote's provider.
+
+    ReceiveResponse:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The receive id — for `GET /api/merchant/receive/{id}[/status]`.
+        bankInfo:
+          type: object
+          description: >
+            Present for a bank collection only: the deposit instructions to
+            forward to the sender. Absent for mobile money.
+          properties:
+            accountName:
+              type: string
+            accountNumber:
+              type: string
+            institution:
+              type: string
+            reference:
+              type: string
+              description: The reference the sender must quote on the transfer.
+            amount:
+              type: string
+            currency:
+              type: string
 
     ErrorResponse:
       type: object
