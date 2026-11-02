@@ -71,6 +71,14 @@ Blinx issues an **API key** and an **API secret** with your tenant. You get them
 | **API key**    | Your tenant's public identifier                         | `x-api-key` header on every request                        |
 | **API secret** | The HMAC key both sides use to sign and verify requests | Stays with you — used to compute `x-signature`, never sent |
 
+To get the variables above, navigate to the dashboard API settings [here](https://dashboard.sandbox.blinx.xyz/tenant/settings/api)
+
+![rotate-secrets.png](../.gitbook/assets/rotate-secrets.png)
+
+![rotate-secrets.png](../.gitbook/assets/rotate-secrets-alert.png)
+
+![rotate-secrets.png](../.gitbook/assets/rotate-secrets-values.png)
+
 > **Rotate if you lose the secret.** The secret is stored encrypted so the server can verify signatures, but it is never displayed again. Rotating issues a new secret and **invalidates the old one immediately** — the API **key** itself is unchanged. Only a `tenant_admin` of the tenant can rotate.
 
 > **Keep the secret out of your code.** Put it in an environment variable or your secrets manager; never in a request body, URL, or committed file.

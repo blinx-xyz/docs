@@ -13,19 +13,6 @@ In order to use the postman, you need to add some variables in the collection va
 - `api_key`: this is your API key provided by blinx. You can get it from the Blinx Dashboard.
 - `api_secret`: this is your API secret provided by blinx. You can get it from the Blinx Dashboard.
 
-To get the variables above, navigate to the dashboard API settings [here](https://dashboard.sandbox.blinx.xyz/tenant/settings/api)
-
-![rotate-secrets.png](../.gitbook/assets/rotate-secrets.png)
-
-![rotate-secrets.png](../.gitbook/assets/rotate-secrets-alert.png)
-
-![rotate-secrets.png](../.gitbook/assets/rotate-secrets-values.png)
-
-{% hint style="info" %}
-The API key and secret will be shown only once. Save it securely.
-If you lose them, you will need to generate them again.
-{% endhint %}
-
 Every request is signed automatically by the collection's pre-request script — you only set the variables. See [Signing requests in Postman](../signing-requests-in-postman.md) for how it works.
 
 ### Other variables
