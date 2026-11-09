@@ -9,7 +9,6 @@ A practical guide to reading **reference data for a supported country** — its 
 #### Concepts
 
 * **Country code** — the ISO country code (`NG`, `KE`, `TZ`, …) identifying a supported country. It is the only path parameter and is matched against the set of countries Blinx pays out to; an unknown or unsupported code is rejected with `400 PAY_COUNTRY_NOT_SUPPORTED`.
-* **Travel rule** — every transfer must carry a `travelRuleData` object; it is required **unconditionally**, regardless of amount. `transfer.minAmount` is the transaction floor (the smallest amount a transfer may be), **not** a threshold that switches travel-rule data on. `transfer.dataFields` names the fields that object must include.
 * **Payout channels** — a country pays out over one or more channels (e.g. `bank`, `momo`), each with its own `{ min, max }` amount bounds. A country need not have every channel — a missing channel key means that channel is **absent**, not unbounded. `payments.min` / `payments.max` give the widest envelope across whatever channels exist.
 
 #### Endpoints
@@ -67,10 +66,9 @@ The response is `200` with the country object inside the standard `data` envelop
 Field by field:
 
 * `code` / `label` / `currency` / `dialCode` / `phoneLength` — country identity and the info needed to normalise a local phone number (`dialCode` prefix, `phoneLength` national digits).
-* `transfer.minAmount` — the transaction floor: the smallest amount a transfer may be. It is **not** a travel-rule threshold — `travelRuleData` is required on every transfer regardless of amount.
-* `transfer.dataFields` — a JSON-encoded array of field descriptors (`{displayName, fieldType, required, payloadName}`), passed through verbatim from the provider. Each descriptor's `payloadName` is a field your `travelRuleData` object must include on every transfer.
 * `payments.bank` / `payments.momo` — `{ min, max }` amount bounds for that payout channel, in the country's `currency`. **Either may be absent** when the country has no such channel — treat a missing key as "channel not available", never as an unlimited range.
 * `payments.min` / `payments.max` — the widest amount envelope across the country's available channels.
+* `transfer` this field can be ignored.
 
 #### Errors
 
@@ -85,4 +83,4 @@ Field by field:
 * **Standard `data` envelope.** Like the rest of the API, the country object is wrapped — read `data.code`, `data.payments`, and so on.
 * **Channel keys are optional.** Always check whether `payments.bank` / `payments.momo` are present before reading their bounds; only `payments.min` / `payments.max` are guaranteed.
 
-_Updated: 19 September 2026 12:22_
+_Updated: 05 November 2026 15:30_

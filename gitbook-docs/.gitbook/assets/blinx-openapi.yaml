@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Blinx Merchant API
-  version: "1.10.0"
+  version: "1.11.0"
   description: |
     Merchant-facing endpoints: quotes, payment links, **receives** — direct
     collections from a third-party sender (_Merchant Receive_) — and **sends** —
@@ -109,6 +109,11 @@ tags:
       account: read your balance, list the payout networks, verify the
       receiver's account, create the send and follow its status. A send pays
       out from your vault address (USDC).
+  - name: Merchant Transfers
+    description: >
+      Search every transfer of your tenant — payments, receives, sends and
+      vault transfers — in one paged list, filtered by reference, direction,
+      status, type, network, counterpart, recipient and creation date.
   - name: Merchant Data
     description: >
       Read-only reference data for a supported country — currency and dialling
@@ -231,10 +236,12 @@ paths:
       operationId: getPayments
       summary: List the merchant's payments
       description: |
-        Returns the tenant's payments and top-ups, most recent first. Rows of
-        type `payment` and `topup` are listed together; use the `type` field to
-        tell them apart. A payment still `created`/`viewed` past its
-        `validUntil` is moved to `expired` as the list is read.
+        Returns the tenant's payments, top-ups (receives) and sends, most
+        recently created first. Rows of type `payment`, `topup` and `send` are
+        listed together; use the `type` field to tell them apart. A payment
+        still `created`/`viewed` past its `validUntil` is moved to `expired` as
+        the list is read. For a filtered, paged list use
+        `POST /api/merchant/transfers/search`.
       parameters:
         - name: format
           in: query
@@ -322,9 +329,11 @@ paths:
       operationId: getMerchantPayment
       summary: Get a single payment
       description: |
-        Returns one payment by id, in any status. Scoped to the caller's tenant:
-        if the payment is not owned by the authenticated merchant's tenant,
-        `404 PAY_404_NOT_FOUND` is returned (existence is not disclosed).
+        Returns one payment, top-up (receive) or send by id, in any status.
+        Scoped to the caller's tenant: if it is not owned by the authenticated
+        merchant's tenant, or is another kind of transfer (e.g. a vault
+        transfer), `404 PAY_404_NOT_FOUND` is returned (existence is not
+        disclosed).
       responses:
         "200":
           description: The payment, wrapped in `data`.
@@ -418,6 +427,147 @@ paths:
                   max: 30000000
         "400":
           $ref: '#/components/responses/CountryNotSupported'
+
+  /api/merchant/transfers/search:
+    post:
+      tags: [Merchant Transfers]
+      operationId: searchTransfers
+      summary: Search the merchant's transfers
+      description: |
+        Returns one page of your tenant's transfers of **every type**,
+        most recently created first, each in the same flat
+        shape as a `GET /api/merchant/payments` row. Like the other merchant
+        lists it needs no KYB/KYC.
+
+        Every body field is optional and narrows the result; an empty body
+        (or `{}`) lists everything. `status` and `type` take one value or a
+        list (a transfer matches any of them). All invalid fields are reported
+        at once in one `400 PAY_400_INVALID_REQUEST` with a per-field `errors`
+        array.
+
+        Page with `size` (1–50, default 50) and `offset` (default 0). The
+        response's `pagination.next` is the `offset` of the following page,
+        absent on the last one; `pagination.total` counts the matches across
+        all pages.
+
+        Transfers not yet in a final status are refreshed from their provider
+        as the page is read (one that cannot be refreshed is listed as
+        stored). Unlike `GET /api/merchant/payments`, the search does not move
+        a past-due payment to `expired`.
+      parameters:
+        - name: size
+          in: query
+          required: false
+          description: Page size.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          description: Number of matching transfers to skip.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferSearchRequest'
+            examples:
+              all:
+                summary: Everything, newest first
+                value: {}
+              openSends:
+                summary: Sends still in flight
+                value:
+                  direction: send
+                  status: [created, waiting, processing]
+              byReference:
+                summary: By reference prefix, in a date range
+                value:
+                  reference: inv-2026-
+                  createdAt:
+                    from: "2026-11-01T00:00:00Z"
+                    to: "2026-11-30T23:59:59Z"
+      responses:
+        "200":
+          description: One page of matching transfers.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TransferSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+              example:
+                data:
+                  - id: 3f9d2a71-6c0e-4d1b-9a55-1e2f3a4b5c6d
+                    reference: payout-0042
+                    status: processing
+                    type: send
+                    amount: "150000.00"
+                    currencyIn: USDC
+                    amountUsd: "100"
+                    currencyOut: NGN
+                    fees: "1.50"
+                    country: NG
+                    tenant: Acme
+                    seller: seller@example.com
+                    createdAt: "2026-11-05T10:00:00.000Z"
+                    updatedAt: "2026-11-05T10:00:04.120Z"
+                  - id: c83ab522-94a2-483a-9927-b8c393a38782
+                    reference: inv-0001
+                    status: settled
+                    type: topup
+                    amount: "5000.00"
+                    currencyIn: NGN
+                    amountUsd: "3.53"
+                    currencyOut: USDC
+                    fees: "0.04"
+                    country: NG
+                    paymentType: bank
+                    payerName: Ken Adams
+                    tenant: Acme
+                    seller: seller@example.com
+                    createdAt: "2026-11-01T12:38:54.434Z"
+                    updatedAt: "2026-11-01T12:39:08.904Z"
+                pagination:
+                  size: 2
+                  next: 2
+                  total: 17
+        "400":
+          description: >
+            An invalid filter or page parameter (`PAY_400_INVALID_REQUEST`),
+            one `errors` entry per offending field.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: PAY_400_INVALID_REQUEST
+                  message: Invalid request
+                  status: 400
+                  errors:
+                    - field: direction
+                      value: both
+                      message: must be send or receive
+                    - field: createdAt.from
+                      value: yesterday
+                      message: must be an ISO 8601 date
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
 
   /api/merchant/quote:
     post:
@@ -610,8 +760,6 @@ paths:
 
         With `?side=send` the account is checked against the payout networks —
         a send's receiver.
-
-        Read-only: not recorded in the tenant audit log.
       parameters:
         - name: side
           in: query
@@ -1625,6 +1773,164 @@ components:
             price: "4000"
         createdAt: "2026-11-01T13:52:29.417Z"
         updatedAt: "2026-11-01T13:58:02.110Z"
+
+    TransferSearchRequest:
+      type: object
+      description: >
+        Filters for `POST /api/merchant/transfers/search`. Every field is
+        optional and narrows the result; unknown fields are ignored.
+      additionalProperties: true
+      properties:
+        reference:
+          type: string
+          minLength: 1
+          description: Prefix of the transfer `reference` (case-insensitive).
+        direction:
+          type: string
+          enum: [send, receive]
+          description: "`send` = payouts (off-ramp), `receive` = collections (on-ramp)."
+        status:
+          description: One status or a non-empty list; a transfer matches any.
+          oneOf:
+            - $ref: '#/components/schemas/TransferStatus'
+            - type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/TransferStatus'
+        type:
+          description: One transfer type or a non-empty list; a transfer matches any.
+          oneOf:
+            - $ref: '#/components/schemas/TransferType'
+            - type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/TransferType'
+        network:
+          type: string
+          minLength: 1
+          description: >
+            Network of the crypto side: the provider account a send pays into,
+            the destination of a receive.
+        counterpart:
+          type: string
+          minLength: 1
+          description: >
+            Part of the counterpart's name (case-insensitive): the sender of a
+            receive, the receiver of a send.
+        recipientId:
+          description: >
+            A saved recipient's id (positive integer, as a number or a numeric
+            string), on either side of the transfer.
+          oneOf:
+            - type: integer
+              minimum: 1
+            - type: string
+              pattern: '^[0-9]+$'
+        createdAt:
+          type: object
+          description: >
+            Inclusive creation-date range; `from` and/or `to` (ISO 8601).
+            `from` must not be after `to`.
+          properties:
+            from:
+              type: string
+              format: date-time
+            to:
+              type: string
+              format: date-time
+      example:
+        direction: send
+        status: [processing, settled]
+        createdAt:
+          from: "2026-11-01T00:00:00Z"
+
+    TransferStatus:
+      type: string
+      description: >
+        A transfer's status, as accepted by the search `status` filter: the
+        `PaymentStatus` values plus `unknown`.
+      enum: [unknown, created, viewed, waiting, processing, validated, refunding, refunded, expired, rejected, failed, cancelled, settled]
+
+    TransferType:
+      type: string
+      description: >
+        A transfer's kind: `payment` (payment link), `topup` (a receive),
+        `send` (a payout), `withdraw`, `vault_transfer` and `network_transfer`
+        (crypto movements of your vault).
+      enum: [send, withdraw, payment, topup, vault_transfer, network_transfer]
+
+    TransferSummary:
+      type: object
+      description: >
+        A transfer row of `POST /api/merchant/transfers/search`: the same flat
+        fields as a `PaymentSummary`, for a transfer of any `TransferType`.
+        Null/unknown fields are omitted; `items` is never populated here.
+      properties:
+        id:
+          type: string
+          format: uuid
+        reference:
+          type: string
+        purpose:
+          type: string
+          description: The transfer memo; omitted when absent.
+        status:
+          $ref: '#/components/schemas/TransferStatus'
+        type:
+          $ref: '#/components/schemas/TransferType'
+        failure:
+          type: string
+          description: Reason of the last failure or expiry; omitted when none.
+        amount:
+          type: string
+          description: The fiat amount of the transfer.
+        currencyIn:
+          type: string
+        amountUsd:
+          type: string
+          description: The token amount of the transfer.
+        currencyOut:
+          type: string
+        fees:
+          type: string
+        country:
+          type: string
+        paymentType:
+          type: string
+          description: The counterpart's account type (`bank`, `momo` or `crypto`), when known.
+        payerName:
+          type: string
+          description: The source account name, when known.
+        tenant:
+          type: string
+          description: Your tenant name.
+        seller:
+          type: string
+          description: The email of the user who created the transfer, when resolved.
+        createdAt:
+          type: string
+          format: date-time
+        cancelledAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      description: The page a list response carries.
+      required: [size]
+      properties:
+        size:
+          type: integer
+          description: Number of items in this page.
+        next:
+          type: integer
+          description: The `offset` of the following page; absent on the last page.
+        total:
+          type: integer
+          description: Number of matching items across all pages.
 
     PaymentSummary:
       type: object

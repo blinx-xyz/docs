@@ -893,6 +893,91 @@
       "description": "Send funds from your vault to a third-party receiver: balance → quote → networks → verification → send → get send / status. Set send_country / send_currency / send_channel first. A send moves real (sandbox) funds out of your vault."
     },
     {
+      "name": "transfers",
+      "item": [
+        {
+          "name": "search transfers",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/transfers/search",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "transfers",
+                "search"
+              ]
+            },
+            "description": "Every transfer of the tenant (payments, receives, sends, vault transfers), most recently created first. No KYB/KYC needed. Body filters are all optional; ?size (1-50, default 50) and ?offset page the result. Returns {data: [...], pagination: {size, next, total}}."
+          },
+          "response": []
+        },
+        {
+          "name": "search transfers (filtered)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"direction\": \"send\",\n  \"status\": [\n    \"created\",\n    \"waiting\",\n    \"processing\",\n    \"settled\"\n  ],\n  \"type\": \"send\",\n  \"reference\": \"snd-\",\n  \"counterpart\": \"Ken\",\n  \"createdAt\": {\n    \"from\": \"2026-11-01T00:00:00Z\",\n    \"to\": \"2026-12-31T23:59:59Z\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{sandbox_url}}/api/merchant/transfers/search?size=10&offset=0",
+              "host": [
+                "{{sandbox_url}}"
+              ],
+              "path": [
+                "api",
+                "merchant",
+                "transfers",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "size",
+                  "value": "10"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Every filter: reference (prefix, case-insensitive), direction (send | receive), status and type (one value or a list), network, counterpart (part of the name), recipientId and createdAt {from, to} (ISO 8601, inclusive). Invalid fields come back together in one 400 PAY_400_INVALID_REQUEST."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "webhooks",
       "item": [
         {
