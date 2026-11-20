@@ -842,7 +842,7 @@
                 "send"
               ]
             },
-            "description": "Creates the send (KYB + KYC required). amountIn / amountOut / rate come from a quote request; amountIn must not exceed your balance (402 PAY_402_INSUFFICIENT_FUNDS otherwise). destination = {accountName, accountIdentifier, networkId}. Returns {data: {id, reference, status}}; the script saves send_id."
+            "description": "Creates the send (KYB + KYC required). amountIn / amountOut / rate come from a quote request; amountIn must not exceed your balance (402 PAY_402_INSUFFICIENT_FUNDS otherwise). destination = {accountName, accountIdentifier, networkId}. Optional pricedIn: \"usd\" (exactly amountIn leaves your vault) or \"fiat\" (the receiver gets exactly amountOut); without it, a send that echoes your quote keeps the amount the quote fixed, otherwise fiat. A payout outside the channel's limits is 400 PAY_AMOUNT_OUT_OF_RANGE. Returns {data: {id, reference, status}}; the script saves send_id."
           },
           "response": []
         },
