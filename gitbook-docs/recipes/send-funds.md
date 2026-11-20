@@ -217,18 +217,20 @@ The body is a `SendRequest`:
 
 | Field         | Required | Description                                                                                       |
 | ------------- | -------- | ------------------------------------------------------------------------------------------------- |
-| `amountIn`    | yes      | What leaves your vault, in USD — from the quote. Must not exceed your balance.                    |
+| `amountIn`    | yes      | The token amount, in USD — from the quote. Priced in `usd`, exactly this leaves your vault. Must not exceed your balance. |
 | `currencyIn`  | yes      | Your vault token: `USD` (or `USDC`).                                                              |
-| `amountOut`   | yes      | What the receiver gets, in `currencyOut` — from the quote.                                        |
+| `amountOut`   | yes      | What the receiver gets, in `currencyOut` — from the quote. Priced in `fiat`, the receiver gets exactly this. |
 | `currencyOut` | yes      | The receiver's fiat (`country`'s currency).                                                       |
 | `rate`        | yes      | The quote rate (informational — the send executes at the provider's quote).                      |
 | `destination` | yes      | `{ accountName, accountIdentifier, networkId }` — all three required.                             |
-| `country`     | no       | The receiver's country. Defaults to your merchant user's country.                                 |
+| `country`     | no       | The receiver's country. Without it, derived from `currencyOut` when exactly one country uses that currency; otherwise `400` on `country`. |
+| `pricedIn`    | no       | Which amount is fixed: `usd` (exactly `amountIn` leaves your vault) or `fiat` (the receiver gets exactly `amountOut`; the token amount is quoted, rounded up to the cent). Without it, a send that echoes your quote keeps the amount the quote fixed; otherwise `fiat`. |
 | `reference`   | no       | Your unique reference; generated when omitted. Reusing a live one → `409 DB_409_DUPLICATE_ENTRY`.  |
 | `memo`        | no       | Free text kept on the send.                                                                       |
 
 * The send always pays out from your vault address — you never pass a token or network.
 * `amountIn` above your balance → `402 PAY_402_INSUFFICIENT_FUNDS`, with an `amountIn` error carrying the available balance. Nothing is created.
+* A payout outside the destination channel's limits → `400 PAY_AMOUNT_OUT_OF_RANGE`, with an error naming the limits (e.g. `amountOut must be between 2,500 and 30,000,000 NGN`). Nothing is created.
 * Every invalid field is reported at once: `400 PAY_400_INVALID_REQUEST` with an `errors` array (e.g. `destination.networkId`, `currencyIn`).
 * **Keep the `id`** — you check the send with it in step 7.
 

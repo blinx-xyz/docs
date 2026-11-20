@@ -1059,14 +1059,27 @@ paths:
         mobile-money account. Requires the tenant to have passed KYB and KYC.
 
         Take `amountIn`, `amountOut` and `rate` from a send quote
-        (`POST /api/merchant/quote`, token → fiat). `amountIn` (USD) leaves your
-        vault; it must not exceed your balance (`GET /api/merchant/balance`),
-        otherwise `402 PAY_402_INSUFFICIENT_FUNDS`. The send executes at the
+        (`POST /api/merchant/quote`, token → fiat). The send executes at the
         provider's quote; `rate` is informational.
+
+        Optional `pricedIn` says which amount is fixed: `usd` — exactly
+        `amountIn` leaves your vault and the payout is quoted — or `fiat` — the
+        receiver gets exactly `amountOut` and the token amount is quoted
+        (rounded up to the cent). Without `pricedIn`, a send that echoes your
+        quote (its `amountIn`, `amountOut` and `rate`, within its `ttl`) keeps
+        the amount that quote fixed (quoted with `amountIn`: `usd`; with
+        `amountOut`: `fiat`); otherwise it is priced in `fiat`.
+
+        The token amount must not exceed your balance
+        (`GET /api/merchant/balance`), otherwise `402 PAY_402_INSUFFICIENT_FUNDS`.
+        The payout must be within the destination channel's limits, otherwise
+        `400 PAY_AMOUNT_OUT_OF_RANGE` naming the limits.
 
         `currencyIn` must be your vault token (`USDC`, or `USD`); the token and
         network always come from your vault address. `currencyOut` must be the
-        currency of `country`.
+        currency of `country`; without `country` it is derived from
+        `currencyOut` when exactly one supported country uses that currency,
+        otherwise the request is a `400` on `country`.
 
         `destination` is the receiver's account (`networkId` from
         `GET /api/merchant/network/{country}?side=send`); it is saved as one of
@@ -2173,7 +2186,11 @@ components:
       properties:
         amountIn:
           type: string
-          description: What leaves your vault, in USD — from the quote. Must not exceed your balance.
+          description: >
+            The token amount, in USD — from the quote. Priced in `usd`, exactly
+            this leaves your vault (at most 6 decimals, at least 1.00, whole
+            cents); priced in `fiat`, it is informational and the quoted amount
+            leaves your vault. Must not exceed your balance.
           example: "10.00"
         currencyIn:
           type: string
@@ -2181,7 +2198,10 @@ components:
           example: USD
         amountOut:
           type: string
-          description: What the receiver gets, in `currencyOut` — from the quote.
+          description: >
+            What the receiver gets, in `currencyOut` — from the quote. Priced in
+            `fiat`, the receiver gets exactly this; it must be within the
+            destination channel's limits.
           example: "13240.57"
         currencyOut:
           type: string
@@ -2195,8 +2215,22 @@ components:
           $ref: '#/components/schemas/SendDestination'
         country:
           type: string
-          description: The receiver's country. Defaults to your merchant user's country.
+          description: >
+            The receiver's country. Without it, derived from `currencyOut` when
+            exactly one supported country uses that currency; otherwise a `400`
+            on `country`.
           example: NG
+        pricedIn:
+          type: string
+          enum: [usd, fiat]
+          description: >
+            Optional. Which amount is fixed: `usd` — exactly `amountIn` leaves
+            your vault and the payout is quoted; `fiat` — the receiver gets
+            exactly `amountOut` and the token amount is quoted (rounded up to
+            the cent). Without it, a send that echoes your quote keeps the
+            amount that quote fixed; otherwise it is priced in `fiat`. Any
+            other value is a `400` on `pricedIn`.
+          example: usd
         reference:
           type: string
           description: Your unique reference (a generated one when omitted). Reusing a live one is a `409`.
